@@ -36,7 +36,7 @@ def fetch_feed(feed_url: str, timeout: int) -> bytes:
     request = urllib.request.Request(
         feed_url,
         headers={
-            "User-Agent": "trump-brain/1.0 (+https://truthsocial.com/@realDonaldTrump)"
+            "User-Agent": "trump-skill/1.0 (+https://truthsocial.com/@realDonaldTrump)"
         },
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:

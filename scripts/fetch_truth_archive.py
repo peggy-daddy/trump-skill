@@ -33,7 +33,7 @@ def fetch_archive(archive_url: str, timeout: int) -> list[dict]:
     request = urllib.request.Request(
         archive_url,
         headers={
-            "User-Agent": "trump-brain/1.0 (+https://truthsocial.com/@realDonaldTrump)"
+            "User-Agent": "trump-skill/1.0 (+https://truthsocial.com/@realDonaldTrump)"
         },
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
