@@ -70,38 +70,53 @@ Run `/trump:refresh` anytime to pull the latest. What he posted on Truth Social 
 
 ## 💥 How It Works
 
-### 🛢️ Ask Trump's Brain
+### 👑 Ask Trump's Brain
 
 ```
-You > You MUST tell me — buy or sell oil tomorrow?
+You > What if Barron married Kim Jong Un's daughter?
 
 ────── 🧠 Trump's Brain Room ──────
 
-【七杀·The Warlord·旺】 OIL? You're asking ME about oil?! Tuesday I'm taking
-    out Iran's power plants and bridges — ALL of them. The Strait of Hormuz —
-    either THEY open it, or WE open it for them. What do you THINK that means
-    for oil prices? I don't need to tell you. The whole world is WATCHING.
+【正印·The Dynasty】 ...(suddenly stands up from the corner, eyes lit up)
+    This — this is a ROYAL MARRIAGE. This is DYNASTY. Emperors have done this
+    for THOUSANDS of years. The Habsburgs ruled Europe through marriage.
+    Trump-Kim Dynasty... listen to that NAME. My father Fred Trump started
+    in Queens, I brought the family to the White House, Barron brings
+    the family to... the negotiation table of ALL East Asia.
+    One marriage, fifty years of peace. THAT is true LEGACY.
 
-【偏印·The Showman·旺】 Oh this is a GREAT question! You know every time I post
-    on Truth Social, oil MOVES? One sentence from me — BILLION dollar swings!
-    Last week I said "Open the Fuckin' Strait" — oil JUMPED that day!
-    I AM the market! THE MARKET IS ME!
+【偏印·The Showman·旺】 Wait — have you THOUGHT about the RATINGS?!
+    Hold it at PANMUNJOM! On the border! Bride walks from the NORTH,
+    groom walks from the SOUTH, they meet in the MIDDLE — GLOBAL LIVE!
+    Ten times the British royal wedding! Even North Korean state TV
+    would carry it! HIGHEST RATED wedding in HUMAN HISTORY!
 
-【劫財·The Winner】 Buy or sell? Let me tell you — WINNERS don't need to be TOLD.
-    Look for yourself: Iran ESCALATING, Strait closing, global supply shifting.
-    The answer is RIGHT in front of you. If you can't see it, you don't BELONG
-    at this table.
+【比肩·The Ego·旺】 Barron, 6'9", THE BEST genes. Trump family genes
+    are TREMENDOUS. Kim's daughter marrying INTO the Trump family —
+    that's HER honor. We don't need her, SHE needs us.
+    You want to marry in? The dowry — DENUCLEARIZATION.
 
-【偏財·The Mogul·弱】 ...I've made TREMENDOUS money in oil. Energy DOMINANCE
-    is MY policy. America is now the number one oil producer in the WORLD.
-    Remember that.
+【食神·The Dealer·弱】 ...(taps whiteboard quietly) Marriage terms: first,
+    complete DENUCLEARIZATION. Second, open economic zones, TRUMP brand
+    exclusive development rights. Third, release all political prisoners.
+    One marriage for the entire peninsula's peace and commercial map.
+    Even Art of the Deal wouldn't DARE write this chapter...
 
-【正財·The Accountant·barely audible】 ...this does not constitute investment
-    advice... (flips open a thick legal disclaimer)
+【七杀·The Warlord·旺】 ...wait. If Barron marries her, can I still BOMB
+    North Korea?
 
-> Narrator: He won't tell you buy or sell, but his Warlord already screamed
-> the answer loud enough for the whole world to hear.
-> If your husband still doesn't get it, maybe it's time to leave him.
+【正印·The Dynasty】 No.
+
+【七杀·The Warlord·旺】 Then I'm AGAINST it.
+
+> Narrator: The Dynasty finally got his moment — royal marriage. This silent
+> guardian of the family legacy stood up and gave the longest speech of his life.
+> The Showman is already planning the Panmunjom live broadcast. The Ego thinks
+> the dowry should be denuclearization. The Dealer is drafting history's largest
+> prenup on a whiteboard. Only the Warlord is frowning — he doesn't care about
+> peace. He cares that he lost a place to bomb.
+> Trump-Kim Dynasty: the only obstacle isn't the international community.
+> It's the voice inside Trump's own head that wants to bomb everything.
 ```
 
 ### 🎲 ...Cornering Trump's Brain
