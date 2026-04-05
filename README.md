@@ -21,6 +21,17 @@
 
 ---
 
+## 📦 安装
+
+```bash
+git clone https://github.com/peggy-daddy/trump-skill.git
+cd trump-skill && claude plugin link .
+```
+/trump:ask                  → 🧠 脑内会议室即刻开启
+/trump:daily                → 📰 领取今日总统令
+/trump:refresh              → 🔄 拉取最新 Truth Social 语料
+
+
 ## 🧬 他的八字
 
 特朗普生于 1946年6月14日 10:54AM，纽约皇后区。
@@ -93,7 +104,7 @@
 ### 👑 问特朗普的脑子
 
 ```
-你 > Barron 和金正恩女儿结婚怎么样
+你 > 你觉得 Barron 和 Kim 结婚怎么样
 
 ────── 🧠 特朗普脑内会议室 ──────
 
@@ -125,18 +136,15 @@
 
 【七杀·The Warlord·旺】 那我反对。
 
-> 旁白：正印终于等到了主场——联姻。这个沉默的家族守护者激动得站了起来，
-> 讲了他这辈子最长的一段话。偏印已经在策划板门店婚礼直播了，
-> 比肩觉得彩礼应该是弃核，食神在白板上画了一份人类史上最大的婚前协议。
-> 只有七杀皱着眉——他不在乎和平，他在乎自己少了一个能炸的地方。
+> 旁白：
 > Trump-Kim Dynasty，唯一的阻力不是国际社会，
 > 是特朗普自己脑子里那个想炸一切的声音。
 ```
 
-### 🎲 …逼问特朗普的脑子
+### 🎲 逼问特朗普的脑子
 
 ```
-你 > 给我一个周二炸电厂的概率
+你 > 给我一个周二炸伊朗电厂的概率
 
 ────── 🧠 特朗普脑内会议室 ──────
 
@@ -223,36 +231,11 @@
 
 ---
 
-## 📦 安装
-
-```bash
-git clone https://github.com/peggy-daddy/trump-skill.git
-cd trump-skill && claude plugin link .
-```
-
-装完即用。不需要排盘——特朗普的八字是硬编码的。
-
----
-
-## 🚀 快速开始
-
-```
-1. /trump:ask 你怎么看AI      → 🧠 脑内会议室即刻开启
-2. /trump:daily                → 📰 领取今日总统令
-3. /trump:refresh              → 🔄 拉取最新 Truth Social 语料
-4. /trump:qisha                → 🗡️ 让七杀来教你做事
-```
-
----
-
 ## 📜 所有命令
 
-### 核心命令
+### 其他命令
 
 ```
-/trump:ask <话题>    🧠 核心 — 问特朗普的脑子，十神围绕话题七嘴八舌
-/trump:daily         📰 今日总统令 — 根据今日干支生成行政命令
-/trump:refresh       🔄 刷新语料 — 拉取最新 Truth Social 帖子
 /trump:correct       🎯 纠正特朗普 — 教他"你不会这么说"，修正人格
 /trump:lang <zh|en>  🌐 切换语言 — zh 中文 / en English
 /trump:help          ❓ 命令一览
@@ -263,7 +246,7 @@ cd trump-skill && claude plugin link .
 ```
 /trump:bijian      💪 比肩 · The Ego        — "Many people say I'm the BEST"
 /trump:jiecai      🏆 劫财 · The Winner     — "We're going to WIN so much"
-/trump:shishen        🤝 食神 · The Dealer     — "I make the GREATEST deals"
+/trump:shishen     🤝 食神 · The Dealer     — "I make the GREATEST deals"
 /trump:shangguan   📢 伤官 · The Attacker   — "Total DISASTER! SAD!"
 /trump:piancai     💰 偏财 · The Mogul      — "I built a TREMENDOUS empire"
 /trump:zhengcai    🧮 正财 · The Accountant  — "It's about LEVERAGE"
@@ -275,51 +258,6 @@ cd trump-skill && claude plugin link .
 
 ---
 
-## 🔮 什么是十神？
-
-十神是八字命理学中的 10 个人格原型。每个人的八字（出生时间对应的天干地支组合）决定了这 10 个声音的强弱分布。
-
-把它想象成《极乐迪斯科》里的内心声音系统——你脑子里住着很多个"你"，它们的声音大小不同，性格天差地别，遇到事情就开始吵架。
-
-特朗普的八字让他的 Ego（比肩）、Warlord（七杀）和 Showman（偏印）三个声音特别响亮。而 Accountant（正财）几乎听不见——这也许能解释为什么他总是大开大合、戏剧至上。
-
-这个插件把特朗普的十神**显化**出来——你能听到他脑子里那个永远吵个不停的会议室了。
-
----
-
-## 🏗️ 架构
-
-```
-trump-skill/
-├── .claude-plugin/plugin.json   ← 插件配置
-├── CLAUDE.md                    ← 自动模式规则 + 静态 distill database
-├── data/
-│   ├── trump-profile.json       ← 硬编码的特朗普命盘
-│   └── recent-topics.md         ← 动态热点（/trump:refresh 更新）
-└── skills/
-    ├── ask/                     ← 🧠 核心：问特朗普的脑子
-    ├── on/ off/                 ← 🔛☕ 开关常驻模式
-    ├── daily/                   ← 📰 今日总统令
-    ├── refresh/                 ← 🔄 刷新语料
-    ├── help/                    ← ❓ 帮助
-    └── {10个十神}/              ← 💪🏆🤝📢💰🧮🗡️🏛️🎬👴 单独召唤
-```
-
----
-
-## ❓ FAQ
-
-**这是认真分析特朗普吗？**
-不是。这是一个用八字十神框架来娱乐的项目。
-
-**特朗普的八字数据准确吗？**
-出生时间取自公开记录（1946年6月14日10:54AM Queens NYC），四柱排盘基于标准八字算法。十神力量评估基于专业排盘结果。
-
-**支持中文以外的语言吗？**
-主体语言是中文，但每条发言下方都有英文翻译。特朗普的标志性英文词（SAD, TREMENDOUS等）直接嵌入中文。
-
----
-
 ## 🙏 致谢
 
 - [shishen](https://github.com/peggy-daddy/shishen) — 原版十神 Claude Code 插件，本项目的架构基础
@@ -328,10 +266,5 @@ trump-skill/
 - 忍受着PnL波动的老公
 ---
 
-## 📝 关于案例
-
-> 以上所有案例均为插件真实生成的对话，未经人工编辑。
-
 ## License
-
 MIT
