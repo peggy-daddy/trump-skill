@@ -1,4 +1,4 @@
-# 🧠 特朗普 Skill
+# 🧠 特朗普.Skill
 
 [English](README-en.md)
 
