@@ -127,5 +127,6 @@
     "pillar": "丙午",
     "meaning": "偏印当令 — 表演欲望极强，showmanship 全开"
   },
-  "autoMode": false
+  "autoMode": false,
+  "language": "zh"
 }

@@ -17,6 +17,8 @@ description: ❓ 查看 Trump Brain 所有可用命令
   /trump:off           ☕ 关闭常驻模式 — 让脑内声音暂时休会
   /trump:daily         📰 今日总统令 — 根据今日干支生成特朗普风格行政命令
   /trump:refresh       🔄 刷新语料 — 搜索最近 Truth Social 热点更新到本地
+  /trump:correct       🎯 纠正特朗普 — 教他"你不会这么说"，修正人格
+  /trump:lang <zh|en>  🌐 切换语言 — zh 中文 / en English
   /trump:help          ❓ 就是这个
 
 ━━━━━━ 召唤十神 ━━━━━━
@@ -35,9 +37,8 @@ description: ❓ 查看 Trump Brain 所有可用命令
 ━━━━━━ 快速开始 ━━━━━━
 
   1. /trump:ask 你怎么看AI      → 脑内会议室即刻开启
-  2. /trump:on                   → 开启常驻模式
-  3. 随便聊天                    → 特朗普的十个人格自动发言
-  4. /trump:daily                → 领取今日总统令
+  2. /trump:daily                → 领取今日总统令
+  3. /trump:refresh              → 拉取最新 Truth Social 语料
 
 ━━━━━━ 特朗普十神格局 ━━━━━━
 

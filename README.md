@@ -1,20 +1,10 @@
-# 🧠 Trump Brain
+# 🧠 特朗普 Skill
 
-```
-         _______
-        /  ___  \
-       / / o o \ \       "I have the BEST brain.
-       \ \  ~  / /        Maybe the best brain EVER.
-        \ \___/ /         Many people are saying this."
-       _/|--T--|\_
-      /  |  |  |  \
-     /   | [|] |   \
-    |    |  |  |    |
-     \   | /|  |   /
-      \__|/ |  |__/
-    ====|=======|====
-        |       |
-```
+[English](README-en.md)
+
+<p align="center">
+  <img src="assets/don-tzu.jpg" width="500" alt="Don Tzu — 如果你不知道自己在幹什麼，那麼你的敵人也不會知道">
+</p>
 
 ### 欢迎来到特朗普的脑内世界。
 
@@ -27,7 +17,7 @@
 
 灵感来自《极乐迪斯科》的内心声音系统 🎮 + 八字命理学 🔮 + 特朗普的公开言行 🇺🇸
 
-> ⚠️ **纯娱乐项目，不代表任何政治立场。** 开战赖七杀，甩锅赖伤官。一切解释权归特朗普的脑子所有。
+> ⚠️ **纯娱乐项目，不代表任何政治立场。** 一切解释权归特朗普的脑子所有。
 
 ---
 
@@ -80,94 +70,95 @@
 
 最大的声音：The Ego（自恋）、The Warlord（好战）、The Showman（表演）
 最小的声音：The Accountant（精算）— 几乎听不见
-
-他是一个比肩七杀偏印三旺的人——
-脑子里住着一个自恋之王、一个军事鹰派、一个真人秀主持人，
-它们三个天天在吵架：
-一个说"我是最好的"，一个说"打他"，一个说"收视率怎么样"。
-精算师在角落里默默算着破产概率，但没有人听。
 ```
+
+---
+
+## 🔄 不只是十神——我们在蒸馏特朗普
+
+这个插件不是静态的角色扮演。我们从 Truth Social 的**真实帖子**中提取语料，蒸馏出：
+
+- **话题记忆**（topic-memory）：他最近在骂谁、在吹什么、在威胁什么
+- **风格记忆**（style-memory）：他最近的用词频率、情绪走向、ALL CAPS 密度
+- **热点摘要**（recent-topics）：近期 5-10 个核心话题 + 原话
+
+运行 `/trump:refresh` 随时拉取最新语料。他昨天在 Truth Social 说了什么，今天你的脑内会议室就能用上。
+
+**十神决定谁说话。语料决定说什么。**
 
 ---
 
 ## 💥 它怎么玩
 
-### 🧠 问特朗普的脑子
+### 🛢️ 问特朗普的脑子
 
 ```
-你 > /trump:ask 你怎么看 TikTok 禁令
+你 > 你能让我老公赚钱吗，伟大的总统，告诉我我们明天买还是卖
 
 ────── 🧠 特朗普脑内会议室 ──────
-【七杀·The Warlord·旺】禁了！国家安全问题！中国在监控我们的孩子！
-    我好几年前就说过了。没人听。现在他们听了。SAD!
-    (BAN IT. National security. China is SPYING on our kids.
-    I said it YEARS ago. Nobody listened. Now they do. SAD!)
-【比肩·The Ego·旺】我救过 TikTok，记得吗？我本可以禁的，
-    但我给了他们一个机会。我太 GENEROUS 了。非常大方。
-    (I SAVED TikTok once. I gave them a CHANCE. Very generous of me.)
-【食神·The Dealer】这样——让他们卖给美国公司。我认识最好的买家。
-    这笔交易会是 TREMENDOUS 的。Believe me.
-    (Make them SELL. I know the BEST buyers. TREMENDOUS deal.)
-【偏印·The Showman·旺】1.5 亿用户。那是多少双眼球！
-    要不我们留着它，在上面投 Truth Social 的广告？
-    (150 million eyeballs. Maybe run MY ads on it!)
-【正财·The Accountant·几乎听不见】……年广告收入 200 亿美元。
-    强制收购的话，光佣金就……（小声算账中）
-    (...ad revenue $20B. The commission alone...)
 
-> 旁白：七杀要禁、比肩要邀功、食神要做交易、偏印想蹭流量。
-> 正财在角落里默默算账。经典特朗普脑内多线作战。
+【比肩·The Ego·旺】 能不能赚钱？看看我的记录！股市在我任期内涨了多少？HISTORIC
+    的数字！178,000个新工作，贸易逆差降55%——THE BIGGEST DROP IN HISTORY。
+    跟着我，你老公不可能输。我碰什么什么涨。MIDAS TOUCH。很多人都这么说。
+
+【七杀·The Warlord·旺】 你要买还是卖？先告诉你一件事——周二是 Power Plant Day，
+    Bridge Day，all wrapped up in one。伊朗的一切都会变。你觉得这对市场意味着什么？
+    自己想。
+
+【劫财·The Winner】 买还是卖？只有 LOSERS 才问这种问题！WINNERS 两边都赚。
+    涨了赚，跌了也赚。你老公要是还在犹豫，那他就不是 winner。
+    在这个市场里，你要么 WIN，要么滚出去。没有中间地带。
+
+【正财·The Accountant·几乎听不见】 ……不要 all in……做好 hedge……
+    （声音消失在七杀的咆哮声中）
+
+> 旁白：
+> 这就是为什么你老公疯了——制造波动的人和喊你赚钱的人，是同一个脑子。
 ```
 
-### 📰 今日总统令
+### 🗡️ 今日总统令
 
 ```
 你 > /trump:daily
 
 ━━━━━━ 📰 今日总统令 ━━━━━━
-📅 2026年4月6日 | 值日十神：【伤官·The Attacker】
+📅 2026年4月6日 | 值日十神：【七杀·The Warlord】
 
 行政命令第 20260406 号：
 
-命令所有 FAKE NEWS 媒体在今天下午5点前公开道歉。
-他们散布的谎言已经达到了 HISTORIC 的水平。
-很多人都在说，媒体从来没有这么不诚实过。SAD!
+即日起，给伊朗最后 48 小时。
+要么拆掉全部核设施，打开霍尔木兹海峡，释放所有人质。
+要么我们继续上次的 MASSIVE STRIKES。更大。更准。更狠。
 
-今日情绪：攻击全开。不信任任何人。先发推再思考。
-
-【伤官·The Attacker】他们先动手的。我只是在 FINISH 这件事。
-    (They started it. I'm just FINISHING it.)
+【七杀·The Warlord】
+上一轮打击中，伊朗多位军事领导人已被 TERMINATED。
+我们用了人类历史上最 LETHAL 的武器。效果？PERFECT。
+问问他们的将军——哦等等，已经问不了了。
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-### 🗡️ 召唤单个十神
+### 💰 召唤单个十神
 
 ```
-你 > /trump:qisha
+你 > /trump:shi 帮我朋友们在你发推之前买点油期货
 
-【七杀·The Warlord·旺】废话少说。执行。
-    要么做，要么被做。就这么简单。
-    (Cut the talk. Execute. Either do, or be done. That simple.)
+【食神·The Dealer·弱】哦？你想做 DEAL？我喜欢做 deal 的人。
+    来，我教你——我每次发 Truth Social 之前，会先……
+    等一下。等一下。这个不能说。FAKE NEWS 会拿去做文章。
+    但是你知道吗？很多 VERY SMART 的人，他们总是在对的时间
+    买入对的东西。巧合？也许吧。也许不是。
+    我只能说——跟着 TRUMP 走，你不会输。从来不会。
+    具体怎么操作？我的律师说我不能讲。但你懂的。你懂的。
 ```
 
-```
-你 > /trump:zhengyin
-
-【正印·The Dynasty】我父亲 Fred Trump……一个 GREAT 的人。
-    他从布鲁克林的工地开始。一砖一瓦。
-    他教我说：永远不要停下来。永远不要。我没有停。
-    (My father Fred Trump... a GREAT man.
-    He started from Brooklyn construction sites. Brick by brick.
-    He taught me: never stop. Never. I haven't.)
-```
 
 ---
 
 ## 📦 安装
 
 ```bash
-git clone https://github.com/peggy-daddy/trump-brain.git
-cd trump-brain && claude plugin link .
+git clone https://github.com/peggy-daddy/trump-skill.git
+cd trump-skill && claude plugin link .
 ```
 
 装完即用。不需要排盘——特朗普的八字是硬编码的。
@@ -178,8 +169,8 @@ cd trump-brain && claude plugin link .
 
 ```
 1. /trump:ask 你怎么看AI      → 🧠 脑内会议室即刻开启
-2. /trump:on                   → 🔛 常驻模式，每次对话自动辩论
-3. /trump:daily                → 📰 领取今日总统令
+2. /trump:daily                → 📰 领取今日总统令
+3. /trump:refresh              → 🔄 拉取最新 Truth Social 语料
 4. /trump:qisha                → 🗡️ 让七杀来教你做事
 ```
 
@@ -191,10 +182,10 @@ cd trump-brain && claude plugin link .
 
 ```
 /trump:ask <话题>    🧠 核心 — 问特朗普的脑子，十神围绕话题七嘴八舌
-/trump:on            🔛 开启常驻模式 — 每次对话自动召开脑内会议
-/trump:off           ☕ 关闭常驻模式 — 让脑内声音暂时休会
 /trump:daily         📰 今日总统令 — 根据今日干支生成行政命令
-/trump:refresh       🔄 刷新语料 — 搜索最近 Truth Social 热点
+/trump:refresh       🔄 刷新语料 — 拉取最新 Truth Social 帖子
+/trump:correct       🎯 纠正特朗普 — 教他"你不会这么说"，修正人格
+/trump:lang <zh|en>  🌐 切换语言 — zh 中文 / en English
 /trump:help          ❓ 命令一览
 ```
 
@@ -230,7 +221,7 @@ cd trump-brain && claude plugin link .
 ## 🏗️ 架构
 
 ```
-trump-brain/
+trump-skill/
 ├── .claude-plugin/plugin.json   ← 插件配置
 ├── CLAUDE.md                    ← 自动模式规则 + 静态 distill database
 ├── data/
@@ -250,16 +241,13 @@ trump-brain/
 ## ❓ FAQ
 
 **这是认真分析特朗普吗？**
-不是。这是一个用八字十神框架来娱乐的项目。写 bug 赖七杀，谈崩赖食神。
+不是。这是一个用八字十神框架来娱乐的项目。
 
 **特朗普的八字数据准确吗？**
 出生时间取自公开记录（1946年6月14日10:54AM Queens NYC），四柱排盘基于标准八字算法。十神力量评估基于专业排盘结果。
 
 **支持中文以外的语言吗？**
 主体语言是中文，但每条发言下方都有英文翻译。特朗普的标志性英文词（SAD, TREMENDOUS等）直接嵌入中文。
-
-**会自动发帖或做任何危险操作吗？**
-不会。这是一个纯本地的 Claude Code 插件，只生成文本。不会发推、不会发帖、不会做任何外部操作。
 
 ---
 
@@ -268,7 +256,7 @@ trump-brain/
 - [shishen](https://github.com/peggy-daddy/shishen) — 原版十神 Claude Code 插件，本项目的架构基础
 - 《极乐迪斯科》(Disco Elysium) — 内心声音系统的灵感来源
 - 八字命理学 — 千年智慧，现代玩法
-
+- 忍受着PnL波动的老公
 ---
 
 ## License
