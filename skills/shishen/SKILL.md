@@ -1,5 +1,5 @@
 ---
-name: shi
+name: shishen
 description: 🤝 召唤食神·The Dealer — 特朗普的谈判人格，Art of the Deal
 ---
 

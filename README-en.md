@@ -70,31 +70,38 @@ Run `/trump:refresh` anytime to pull the latest. What he posted on Truth Social 
 
 ## 💥 How It Works
 
-### 📈 Ask Trump's Brain
+### 🛢️ Ask Trump's Brain
 
 ```
-You > Can you make my husband money, great President? Should we buy or sell tomorrow?
+You > You MUST tell me — buy or sell oil tomorrow?
 
 ────── 🧠 Trump's Brain Room ──────
 
-【比肩·The Ego·旺】 Can I make you money? Look at my RECORD! How much did the
-    market go up under me? HISTORIC numbers! 178,000 new jobs, trade deficit
-    down 55% — THE BIGGEST DROP IN HISTORY. Follow me, your husband CAN'T
-    lose. Everything I touch goes UP. MIDAS TOUCH. Many people say that.
+【七杀·The Warlord·旺】 OIL? You're asking ME about oil?! Tuesday I'm taking
+    out Iran's power plants and bridges — ALL of them. The Strait of Hormuz —
+    either THEY open it, or WE open it for them. What do you THINK that means
+    for oil prices? I don't need to tell you. The whole world is WATCHING.
 
-【七杀·The Warlord·旺】 Buy or sell? Let me tell you ONE thing — Tuesday is
-    Power Plant Day, Bridge Day, all wrapped up in one. EVERYTHING changes
-    in Iran. What does that mean for the market? Figure it out YOURSELF.
+【偏印·The Showman·旺】 Oh this is a GREAT question! You know every time I post
+    on Truth Social, oil MOVES? One sentence from me — BILLION dollar swings!
+    Last week I said "Open the Fuckin' Strait" — oil JUMPED that day!
+    I AM the market! THE MARKET IS ME!
 
-【劫财·The Winner】 Buy or sell? Only LOSERS ask that question! WINNERS make
-    money BOTH ways. Up — profit. Down — profit. If your husband is still
-    hesitating, he's NOT a winner. In this market, you either WIN or get OUT.
+【劫財·The Winner】 Buy or sell? Let me tell you — WINNERS don't need to be TOLD.
+    Look for yourself: Iran ESCALATING, Strait closing, global supply shifting.
+    The answer is RIGHT in front of you. If you can't see it, you don't BELONG
+    at this table.
 
-【正财·The Accountant·barely audible】 ...don't go all in... hedge your
-    position... (voice drowned out by The Warlord's roar)
+【偏財·The Mogul·弱】 ...I've made TREMENDOUS money in oil. Energy DOMINANCE
+    is MY policy. America is now the number one oil producer in the WORLD.
+    Remember that.
 
-> Narrator: The guy creating the volatility and the guy telling you to invest
-> are the same brain.
+【正財·The Accountant·barely audible】 ...this does not constitute investment
+    advice... (flips open a thick legal disclaimer)
+
+> Narrator: He won't tell you buy or sell, but his Warlord already screamed
+> the answer loud enough for the whole world to hear.
+> If your husband still doesn't get it, maybe it's time to leave him.
 ```
 
 ### 🗡️ Daily Executive Order
@@ -118,18 +125,69 @@ Ask their generals — oh wait, you can't anymore.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-### 💰 Summon a Single God
+### 💭 Summon a Single God
 
 ```
-You > /trump:shi Help my friends buy oil futures before your next post
+You > /trump:shishen My mom is forcing me to take the civil service exam. So stressed.
 
-【食神·The Dealer·弱】Oh? You wanna make a DEAL? I like deal-makers.
-    Let me tell you — before I post on Truth Social, I always...
-    Wait. Wait. Can't say that. FAKE NEWS would have a field day.
-    But you know what? A lot of VERY SMART people always buy the
-    right thing at the right time. Coincidence? Maybe. Maybe not.
-    All I can say — follow TRUMP, you never lose. NEVER.
-    Specifics? My lawyer says I can't. But you know. You know.
+【食神·The Dealer·弱】 ...this isn't about "obeying mom or not." This is a DEAL.
+
+    What does your mom want? Stability. Iron rice bowl. Security.
+    Her POSITION is clear. What's YOUR position?
+    You need to know your own cards before you sit at the table.
+
+    Art of the Deal, rule ONE — never go head-on.
+    Tell your mom "I won't take it" and you're flipping the table.
+    DEAL collapses. Smart people don't flip tables. Smart people ADD CONDITIONS.
+
+    Here's how: "Mom, I'll take the exam. But give me one year.
+    One year to try MY path. If it doesn't work, I'll come back. DEAL?"
+    You know what this is? A DEADLINE. Same move I used on Iran.
+
+    The most CRITICAL point — the ability to walk away.
+    If you're financially independent, mom's LEVERAGE disappears.
+    If you're still spending HER money, she's the house. You have NO chips.
+    Step one isn't arguing — it's earning your first dollar.
+
+    EVERYTHING is negotiable — but only if you're HOLDING cards.
+
+> Narrator: The Dealer rarely talks this much. Usually drowned out by The Warlord.
+> But family negotiation is his home turf.
+> Too bad if The Ego were here, he'd just say "Civil service? Come work for ME.
+> I'm THE BEST boss."
+```
+
+### 🐣 Easter Sunday 8AM F-Bomb
+
+```
+You > /trump:pianyin You posted "open the f***in' strait" on Easter morning at 8am.
+    What were you thinking? How did you pick the timing?
+
+【偏印·The Showman·旺】 Timing? You think that was RANDOM?
+
+    Easter. All of America just woke up. Picked up their phones. Saw ME.
+    Tuesday we bomb the power plants. I drop the TEASER on Sunday.
+    Give them 48 hours of psychological preparation.
+    Netflix WISHES they could do trailers like me.
+
+    And did you notice — I said "Praise be to Allah."
+    On EASTER. CNN went NUCLEAR. The whole internet shared it.
+    One post. Zero cost. Global coverage.
+    FOX did a 4-hour special. MSNBC screamed all day — but they were AIRING it.
+
+    You think I was yelling at Iran? I was doing a PREMIERE.
+    Tuesday is the main feature. This was just the trailer.
+    And the ratings? THROUGH THE ROOF.
+
+    The F-bomb was deliberate. Try "please open the strait" — see what happens.
+    Nobody shares it. Nobody remembers. But "open the f***in' strait"?
+    The ENTIRE WORLD remembers. That's BRANDING.
+    I'm not a president posting. I'm a director dropping a trailer.
+
+    Praise be to ratings.
+
+> Narrator: The Showman is the scariest voice in Trump's brain —
+> not because it's violent, but because it turns war into content.
 ```
 
 ---
@@ -176,7 +234,7 @@ Ready to use. No setup needed — Trump's BaZi chart is hardcoded.
 ```
 /trump:bijian      💪 The Ego        /trump:piancai     💰 The Mogul
 /trump:jiecai      🏆 The Winner     /trump:zhengcai    🧮 The Accountant
-/trump:shi         🤝 The Dealer     /trump:qisha       🗡️ The Warlord
+/trump:shishen        🤝 The Dealer     /trump:qisha       🗡️ The Warlord
 /trump:shangguan   📢 The Attacker   /trump:zhengguan   🏛️ The POTUS
 /trump:pianyin     🎬 The Showman    /trump:zhengyin    👴 The Dynasty
 ```

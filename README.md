@@ -13,7 +13,7 @@
 
 > 一个基于八字十神的 Claude Code 插件。
 > 用中国命理学的十神体系，映射特朗普的 10 个人格面。
-> 你提话题，他脑子里的声音就开始七嘴八舌。
+> 你提问，他脑子里的声音就开始七嘴八舌。
 
 灵感来自《极乐迪斯科》的内心声音系统 🎮 + 八字命理学 🔮 + 特朗普的公开言行 🇺🇸
 
@@ -93,27 +93,28 @@
 ### 🛢️ 问特朗普的脑子
 
 ```
-你 > 你能让我老公赚钱吗，伟大的总统，告诉我我们明天买还是卖
+你 > 你必须告诉我明天买还是卖石油 
 
 ────── 🧠 特朗普脑内会议室 ──────
 
-【比肩·The Ego·旺】 能不能赚钱？看看我的记录！股市在我任期内涨了多少？HISTORIC
-    的数字！178,000个新工作，贸易逆差降55%——THE BIGGEST DROP IN HISTORY。
-    跟着我，你老公不可能输。我碰什么什么涨。MIDAS TOUCH。很多人都这么说。
+【七杀·The Warlord·旺】 石油？你在问我石油？！周二我要把伊朗的电厂和桥梁全部 DESTROY。
+    霍尔木兹海峡——要么他们打开，要么我们替他们打开。你觉得这对油价意味着什么？
+    我不需要告诉你。全世界都在 WATCHING。
 
-【七杀·The Warlord·旺】 你要买还是卖？先告诉你一件事——周二是 Power Plant Day，
-    Bridge Day，all wrapped up in one。伊朗的一切都会变。你觉得这对市场意味着什么？
-    自己想。
+【偏印·The Showman·旺】 哦这个问题太好了！你知道每次我发一条 Truth Social
+    油价就动吗？我一句话就是十亿美元的波动！上周我说了 "Open the Fuckin'
+    Strait"——油价当天就跳了！我就是市场！THE MARKET IS ME!
 
-【劫财·The Winner】 买还是卖？只有 LOSERS 才问这种问题！WINNERS 两边都赚。
-    涨了赚，跌了也赚。你老公要是还在犹豫，那他就不是 winner。
-    在这个市场里，你要么 WIN，要么滚出去。没有中间地带。
+【劫财·The Winner】 买还是卖？告诉你——WINNERS 不需要别人告诉他们。你自己看：伊朗局势
+    ESCALATE，海峡要关，全球产量在变。答案就在你面前。你要是连这都看不出来，你就不配在这个牌桌上。
 
-【正财·The Accountant·几乎听不见】 ……不要 all in……做好 hedge……
-    （声音消失在七杀的咆哮声中）
+【偏财·The Mogul·弱】 ……我在石油上赚过 TREMENDOUS 的钱。能源 DOMINANCE
+    是我的政策。美国现在是世界第一产油国。记住这个。
 
-> 旁白：
-> 这就是为什么你老公疯了——制造波动的人和喊你赚钱的人，是同一个脑子。
+【正财·The Accountant·几乎听不见】 ……不构成投资建议……（翻开一本厚厚的法律免责声明）
+
+> 旁白：他不会直接告诉你买还是卖，但他的七杀已经把答案喊得全世界都听到了。
+> 你老公如果还没听懂，那确实该离。
 ```
 
 ### 🗡️ 今日总统令
@@ -137,20 +138,34 @@
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-### 💰 召唤单个十神
+### 💭 召唤单个十神 
 
 ```
-你 > /trump:shi 帮我朋友们在你发推之前买点油期货
+你 > /trump:shishen 我妈妈逼着我去考公，好烦恼
 
-【食神·The Dealer·弱】哦？你想做 DEAL？我喜欢做 deal 的人。
-    来，我教你——我每次发 Truth Social 之前，会先……
-    等一下。等一下。这个不能说。FAKE NEWS 会拿去做文章。
-    但是你知道吗？很多 VERY SMART 的人，他们总是在对的时间
-    买入对的东西。巧合？也许吧。也许不是。
-    我只能说——跟着 TRUMP 走，你不会输。从来不会。
-    具体怎么操作？我的律师说我不能讲。但你懂的。你懂的。
+【食神·The Dealer·弱】 ……这不是"听不听妈妈话"的问题。这是一笔 DEAL。
+
+    你妈想要什么？稳定。铁饭碗。安全感。她的 position 很清楚。
+    那你的 position 是什么？你得先搞清楚自己的牌，才能上谈判桌。
+
+    Art of the Deal 第一条——永远不要正面硬刚。
+    你跟你妈说"我不考"，那就是掀桌子，DEAL 直接崩。
+    聪明人不掀桌子。聪明人加条件。
+
+    你这么谈："妈，我考。但给我一年。一年我先试自己的路。
+    没成，我回来考。DEAL？"
+    这叫 DEADLINE。我对伊朗用的也是这招。
+
+    最关键的——走掉的能力。
+    你经济独立，你妈的 LEVERAGE 就没了。
+    你还花她的钱，她就是庄家，你没有筹码。
+    所以第一步不是跟她吵，是去赚你的第一块钱。
+
+    EVERYTHING is negotiable——但前提是你手里有牌。
+
+> 旁白：食神难得说这么多。平时被七杀的咆哮盖过去，但家庭谈判是他的主场。
+> 可惜比肩要是在，只会说"考什么公务员，来给我打工，I'm THE BEST 老板"。
 ```
-
 
 ---
 
@@ -194,7 +209,7 @@ cd trump-skill && claude plugin link .
 ```
 /trump:bijian      💪 比肩 · The Ego        — "Many people say I'm the BEST"
 /trump:jiecai      🏆 劫财 · The Winner     — "We're going to WIN so much"
-/trump:shi         🤝 食神 · The Dealer     — "I make the GREATEST deals"
+/trump:shishen        🤝 食神 · The Dealer     — "I make the GREATEST deals"
 /trump:shangguan   📢 伤官 · The Attacker   — "Total DISASTER! SAD!"
 /trump:piancai     💰 偏财 · The Mogul      — "I built a TREMENDOUS empire"
 /trump:zhengcai    🧮 正财 · The Accountant  — "It's about LEVERAGE"

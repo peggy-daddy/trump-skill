@@ -25,7 +25,7 @@ description: ❓ 查看 Trump Brain 所有可用命令
 
   /trump:bijian      💪 比肩 · The Ego       — "Many people say I'm the BEST"
   /trump:jiecai      🏆 劫财 · The Winner    — "We're going to WIN so much"
-  /trump:shi         🤝 食神 · The Dealer    — "I make the GREATEST deals"
+  /trump:shishen        🤝 食神 · The Dealer    — "I make the GREATEST deals"
   /trump:shangguan   📢 伤官 · The Attacker  — "Total DISASTER! SAD!"
   /trump:piancai     💰 偏财 · The Mogul     — "I built a TREMENDOUS empire"
   /trump:zhengcai    🧮 正财 · The Accountant — "It's about LEVERAGE"
