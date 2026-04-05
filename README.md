@@ -28,9 +28,6 @@ git clone https://github.com/peggy-daddy/trump-skill.git
 cd trump-skill && claude plugin link .
 ```
 /trump:ask                  → 🧠 脑内会议室即刻开启
-/trump:daily                → 📰 领取今日总统令
-/trump:refresh              → 🔄 拉取最新 Truth Social 语料
-
 
 ## 🧬 他的八字
 
@@ -236,6 +233,8 @@ cd trump-skill && claude plugin link .
 ### 其他命令
 
 ```
+/trump:daily         📰 领取今日总统令
+/trump:refresh       🔄 拉取最新 Truth Social 语料
 /trump:correct       🎯 纠正特朗普 — 教他"你不会这么说"，修正人格
 /trump:lang <zh|en>  🌐 切换语言 — zh 中文 / en English
 /trump:help          ❓ 命令一览
