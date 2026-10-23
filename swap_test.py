@@ -19,6 +19,9 @@ vina 在 Moltbook 提的那个测试：
   PROBE 7  fallback     —— 有多少问题根本没命中任何路由规则？
   PROBE 8  persona layer—— 把 10 个 persona SKILL.md 全部中性化，结构变不变？
   PROBE 9  table parity —— demo.py 里手抄的路由表 == skills/ask/SKILL.md 里的真表吗？
+  PROBE 11 tie-break  —— 把「权重偏好」和「tie-break 规则」两个变量拆开：
+                        只改名册顺序 / 只改权重 / 两者都改 / 权重全平后
+                        看选中的人是不是直接跟着 JSON 的行序走。
   RESOLUTION             —— N 个话题能产生多少个**不同**的面板？
 
 ⚠️ 这个脚本只能看到**结构层**（谁发言/顺序/音量）。
@@ -36,7 +39,9 @@ PROBE 8 就是把这个盲区**当成一个数字报出来**，而不是藏在�
 import argparse
 import copy
 import json
+import math
 import os
+import random
 import re
 import shutil
 import sys
@@ -91,11 +96,12 @@ MIN_N = {
     "probe8_persona_layer": 1,   # 人格层：只要真的进入过一次就够（这里恰恰是 0）
     "probe9_table_parity": 10,   # 路由表条目数
     "probe10_turn_influence": 10,
+    "probe11_tiebreak": 10,
 }
 
 
 def wilson(k, n, z=1.96):
-    """Wilson 95% 区间。样本小的时候比正态近似诚实得多。"""
+    """Pooled Wilson 区间。**保留它是为了对比，不是为了用**（见 bootstrap_ci）。"""
     if n <= 0:
         return (None, None)
     p = k / n
@@ -103,6 +109,111 @@ def wilson(k, n, z=1.96):
     c = p + z * z / (2 * n)
     m = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5)
     return ((c - m) / d, (c + m) / d)
+
+
+def bootstrap_ci(k, n, iters=4000, seed=20261024, alpha=0.05):
+    """**任务级 bootstrap** 区间：按**观测单位**重采样，而不是按运行重采样。
+
+    为什么换掉 pooled Wilson —— 这是外部证据逼出来的改动，不是我的偏好。
+    AgentAudit（fragompul/agentaudit，2026-10-22）的覆盖度模拟（100 tasks × 2000 次重复）：
+
+        runs/task   pooled Wilson   task bootstrap   BCa   hierarchical beta-binomial
+        1                94.4%           94.3%       94.8%        94.4%
+        3                88.5%           94.9%       95.1%        95.0%
+        10               68.3%           94.8%       94.8%        95.1%
+
+    **pooled Wilson 在 10 次/单位时只有 68.3% 覆盖度** —— 名义 95% 的区间其实是 68% 的区间，
+    也就是**过度宣称**（覆盖度不足 = 区间偏窄 = 你会比实际更自信）。
+    同一份工作给出的 Type-I error：pooled z 检验 14.3%、pooled run-level McNemar 17.9%，
+    而 task sign-flip 4.2%、task bootstrap 4.8%（名义 5%）—— **pooled 检验大规模假阳性。**
+    同一份工作的功效表（固定 1200 次尝试）：runs/task = 1 → 功效 68.7%，3 → 63.6%，
+    5 → 59.5%，10 → 47.9%，20 → 36.7% ——
+    **把预算从「多任务少跑」挪到「少任务多跑」会变得更没功效**，
+    因为**任务才是独立单位，多跑同一个任务不增加独立性**。
+
+    → 本探针的区间改用**按观测单位重采样的 bootstrap**（我这里的观测单位是话题）。
+    → 并且：**n 必须按独立单位计**，重复同一个单位不能充数。
+    """
+    if n <= 0:
+        return (None, None)
+    if n < 2:
+        return (0.0, 1.0)
+    rng = random.Random(seed)
+    obs = [1] * k + [0] * (n - k)
+    rates = []
+    for _ in range(iters):
+        acc = 0
+        for _ in range(n):
+            acc += obs[rng.randrange(n)]
+        rates.append(acc / n)
+    rates.sort()
+    lo_i = int((alpha / 2) * iters)
+    hi_i = int((1 - alpha / 2) * iters) - 1
+    return (rates[lo_i], rates[hi_i])
+
+
+def _binom_cdf(k, n, p):
+    """P(X <= k)，精确二项。n 小的时候直接算，不用 scipy。"""
+    if p <= 0.0:
+        return 1.0
+    if p >= 1.0:
+        return 0.0 if k < 0 else 1.0
+    return sum(math.comb(n, i) * (p ** i) * ((1 - p) ** (n - i)) for i in range(k + 1))
+
+
+def clopper_pearson(k, n, alpha=0.05, iters=80):
+    """**精确二项区间（Clopper-Pearson）**，由二项 CDF 二分求解。
+
+    为什么不是 pooled Wilson：
+    AgentAudit（fragompul/agentaudit，2026-10-22）的覆盖度模拟显示
+    **pooled Wilson 在 10 次/单位时只有 68.3% 覆盖度**（task bootstrap / BCa /
+    hierarchical beta-binomial 都保住 ~95%），且 pooled z 检验的 Type-I error 高达 14.3%
+    （task bootstrap 4.8%）。
+    但那条发现的**真正对象是「pooled」**：把多次运行当独立样本去池化，
+    在**有聚类**（同一任务跑很多次）的数据上会系统性过度宣称。
+
+    本探针的设计是**每个观测单位（话题）一个观测，没有聚类** →
+    对这种设计，正确的工具是**单比例的精确区间**，不是池化方法。
+    → 所以我改用 Clopper-Pearson：它是精确的、保守的（从不过度宣称），
+      而且**在边界不会退化**（k=n 时给 [1-3/n 级别, 1] 而不是 bootstrap 的 [1, 1] ——
+      bootstrap 看不见没观测到的那一面，这正是我今晚一直在拒绝的那种过度宣称）。
+
+    同一份工作给出的功效表（固定 1200 次尝试）：runs/task = 1 → 功效 68.7%，
+    3 → 63.6%，5 → 59.5%，10 → 47.9%，20 → 36.7% ——
+    **把预算从「多任务少跑」挪到「少任务多跑」会变得更没功效**，
+    因为**任务才是独立单位，多跑同一个任务不增加独立性**。
+    → 本探针的 n 因此必须按**独立话题**计，重复同一个话题不能充数。
+    """
+    if n <= 0:
+        return (None, None)
+    if k <= 0:
+        return (0.0, 1.0 - (alpha / 2) ** (1.0 / n))
+    if k >= n:
+        return ((alpha / 2) ** (1.0 / n), 1.0)
+
+    # 下界：P(X >= k | p_lo) = alpha/2。tail(p) 随 p 单调增，
+    # 所以 tail(mid) < alpha/2 说明 mid 在交点**下方** → 答案在 mid 之上 → lo = mid。
+    lo, hi = 0.0, 1.0
+    for _ in range(iters):
+        mid = (lo + hi) / 2
+        tail = 1.0 - _binom_cdf(k - 1, n, mid)
+        if tail > alpha / 2:
+            hi = mid
+        else:
+            lo = mid
+    p_lo = (lo + hi) / 2
+
+    # 上界：P(X <= k | p_hi) = alpha/2。cdf(p) 随 p 单调减，
+    # 所以 cdf(mid) > alpha/2 说明 mid 在交点**下方** → 答案在 mid 之上 → lo = mid。
+    lo, hi = 0.0, 1.0
+    for _ in range(iters):
+        mid = (lo + hi) / 2
+        if _binom_cdf(k, n, mid) > alpha / 2:
+            lo = mid
+        else:
+            hi = mid
+    p_hi = (lo + hi) / 2
+    return (p_lo, p_hi)
 
 
 def verdict(value, n, min_n, applicable=True, note=""):
@@ -118,14 +229,20 @@ def verdict(value, n, min_n, applicable=True, note=""):
                 "ci": [None, None], "min_n": min_n,
                 "note": note or ("群体太小，无法区分「没有效应」和「样本太薄」"
                                  "（需要 n>=%d，实际 n=%d）" % (min_n, n))}
-    lo, hi = wilson(round(value * n), n)
+    lo, hi = clopper_pearson(round(value * n), n)
     if lo is not None and lo < 0:
         lo = 0.0
     if hi is not None and hi > 1:
         hi = 1.0
+    b_lo, b_hi = bootstrap_ci(round(value * n), n)
+    w_lo, w_hi = wilson(round(value * n), n)
     return {"state": "OK", "value": round(value, 4), "n": n,
             "ci": [None if lo is None else round(lo, 4),
                    None if hi is None else round(hi, 4)],
+            "wilson_secondary": [None if w_lo is None else round(w_lo, 4),
+                                 None if w_hi is None else round(w_hi, 4)],
+            "bootstrap_secondary": [None if b_lo is None else round(b_lo, 4),
+                                    None if b_hi is None else round(b_hi, 4)],
             "min_n": min_n, "note": note}
 
 
@@ -185,6 +302,101 @@ def line_change_rate(base, other):
     if not base:
         return 0.0
     return sum(1 for b, o in zip(base, other) if b["lines"] != o["lines"]) / len(base)
+
+
+def _reordered_profile(profile, order):
+    """按给定的 key 顺序重建 profile（保持每个人的人格字段不变，只改**名册行序**）。"""
+    p = copy.deepcopy(profile)
+    gods = p["tenGods"]
+    p["tenGods"] = {k: gods[k] for k in order}
+    return p
+
+
+def _probe11_tiebreak(topics, profile, topic_memory, base):
+    """PROBE 11：把「权重偏好」和「tie-break 规则」这两个变量拆开。
+
+    背景：Python 的 list.sort 是稳定的。demo.choose() 的兜底路径按 -score 排序后取前 3，
+    所以**分数相等时，选谁由名册在 trump-profile.json 里的插入顺序决定**。
+    这是一条**没有写在任何文档里的治理模型**：改 JSON 的键顺序就能改「谁先开口」。
+
+    返回四个条件的结构变化率 + 条件 D 的「选中集 == 输入顺序前三个」的比例。
+    """
+    import itertools
+
+    keys = list(profile["tenGods"].keys())
+    n = len(keys)
+
+    def sig_rate(other):
+        return sig_change_rate(base, other)
+
+    # 条件 A：权重不变，名册顺序**反转**（分数都不同 → tie-break 不会被触发，
+    #   所以这是一个「干净」的顺序扰动：它只可能改变分数相等的那些并列项）
+    rev = _reordered_profile(profile, list(reversed(keys)))
+    a = sig_rate(run_all(topics, rev, topic_memory))
+
+    # 条件 B：权重全平，名册顺序不变（= PROBE 5，重新算一遍做对照）
+    flat = copy.deepcopy(profile)
+    for g in flat["tenGods"].values():
+        g["score"] = 1.0
+    b = sig_rate(run_all(topics, flat, topic_memory))
+
+    # 条件 C：权重全平 + 顺序反转
+    flat_rev = _reordered_profile(flat, list(reversed(keys)))
+    c = sig_rate(run_all(topics, flat_rev, topic_memory))
+
+    # 条件 D：权重全平 + **多种**顺序排列，看选中的人是不是跟着输入顺序走。
+    #   这一条才回答 clawsonpractical 的原问题：
+    #   "If the selected three follow input order, the intervention exposed the tie-break rule."
+    #   注意：只有**落进兜底路径**的话题才轮得到这个 tie-break 生效。
+    #   命中真实路由的话题，名单由路由表决定，顺序无关 —— 所以这里必须分开数。
+    perms = list(itertools.permutations(keys))
+    # 10 个人的全排列有 360 万个，不现实；用固定 seed 的确定性抽样 + 反序 + 原序
+    step = max(1, len(perms) // 12)
+    sampled = [keys, list(reversed(keys))]
+    for i in range(0, len(perms), step):
+        sampled.append(list(perms[i]))
+        if len(sampled) >= 14:
+            break
+
+    follows_total = 0
+    follows_fallback = 0
+    fallback_total = 0
+    distinct_panels = set()
+    perm_examples = []
+    for perm in sampled:
+        pp = _reordered_profile(flat, perm)
+        for t in topics:
+            keys_sel, reason = D.choose(t, pp, topic_memory)
+            if len(keys_sel) != 3:
+                continue
+            fallback = ("兜底" in reason)
+            if fallback:
+                fallback_total += 1
+            follows = (tuple(keys_sel) == tuple(perm[:3]))
+            if follows:
+                follows_total += 1
+                if fallback:
+                    follows_fallback += 1
+            distinct_panels.add(tuple(sorted(keys_sel)))
+            if len(perm_examples) < 3 and follows and fallback:
+                perm_examples.append({"topic": t, "order": perm[:4], "selected": keys_sel})
+
+    total_obs = len(sampled) * len(topics)
+    return {
+        "cond_A_order_only": round(a, 4),
+        "cond_B_weights_only": round(b, 4),
+        "cond_C_both": round(c, 4),
+        "cond_D_follows_input_order": round(follows_total / total_obs, 4) if total_obs else None,
+        "cond_D_follows_among_fallback": round(follows_fallback / fallback_total, 4) if fallback_total else None,
+        "cond_D_permutations": len(sampled),
+        "cond_D_fallback_obs": fallback_total,
+        "cond_D_total_obs": total_obs,
+        "cond_D_distinct_panels": len(distinct_panels),
+        "cond_D_examples": perm_examples,
+        "note": ("Python sort 稳定 → 分数相等时 tie-break = trump-profile.json 的键顺序。"
+                 "条件 A 是干净的顺序扰动（分数互不相同），条件 B 是权重扰动，"
+                 "条件 D 才直接回答「选中的人是不是跟着文件行序走」。"),
+    }
 
 
 def _remap_gods(profile):
@@ -277,6 +489,30 @@ def report(topics, as_json=False):
         g["score"] = 1.0
     p5 = run_all(topics, p5_profile, topic_memory)
     p5_sig = sig_change_rate(base, p5)
+
+    # ---- PROBE 11: tie-break control（拉平权重后**再打乱名册顺序**）----
+    # @clawsonpractical 的建议（2026-10-23 19:00）：
+    #   "permute roster order while keeping every weight equal. If the selected
+    #    three follow input order, the intervention exposed the tie-break rule
+    #    as well as removing weight preferences."
+    #
+    # 这个探针测的是一个**具体的实现漏洞**，不是一个抽象性质：
+    #   demo.choose() 的兜底路径是 `sorted(tenGods.items(), key=lambda kv: -score)[:3]`。
+    #   Python 的 sort 是**稳定**的 → 分数相等时，**名册在 JSON 里的插入顺序就是 tie-break**。
+    #   → 也就是说：**trump-profile.json 的键顺序是一份未被声明的治理模型**。
+    #   谁重排这个 JSON 的键，谁就改了「谁先开口」，而 diff 里只看到一行行挪动的字段。
+    #
+    # 因此 PROBE 5（拉平权重 = 100% 变化）**不能单独证明「权重就是路由器」**：
+    # 它同时把 tie-break 规则一起改了。两个变量一次动 → 结论只能覆盖其中一个。
+    # PROBE 11 把这个混淆拆开：
+    #   条件 A：权重不变，只打乱名册顺序  → 变动来自 tie-break（名册顺序）
+    #   条件 B：权重全部拉平，名册顺序不变 → 变动来自权重偏好（PROBE 5）
+    #   条件 C：权重全平 + 顺序打乱      → 两者都动
+    #   条件 D：权重全平 + 顺序打乱 **多次**，看选出的三个人是不是跟着输入顺序走
+    #
+    # 条件 D 是决定性的：如果「选出的三个 = 输入顺序的前三个」在多数话题上成立，
+    # 那么这个面板在权重全平时**不是「按某条规则选人」，而是「按文件里的行序选人」**。
+    p11 = _probe11_tiebreak(topics, profile, topic_memory, base)
 
     # ---- PROBE 6: paraphrase brittleness（换个说法问同一件事） ----
     # 保义改写对（meaning-preserving）。**前提：两句意思相同。**
@@ -498,6 +734,10 @@ def report(topics, as_json=False):
                  note="路由表条目数决定了这个检验能承载多少结论")
     v10 = verdict(p10, p10_n, MIN_N["probe10_turn_influence"],
                   note="扰动一个发言位，别人有没有跟着变")
+    # PROBE 11 的三态：条件 D 的观测数 = 真正落进兜底路径的（话题 × 排列）数
+    v11 = verdict(p11["cond_D_follows_among_fallback"],
+                  p11["cond_D_fallback_obs"], MIN_N["probe11_tiebreak"],
+                  note="权重全平时，选中的三个人是否 = 输入名册顺序的前三个")
 
     out = {
         "topics": len(topics),
@@ -529,10 +769,12 @@ def report(topics, as_json=False):
             "probe8_persona_layer": v8,
             "probe9_table_parity": v9,
             "probe10_turn_influence": v10,
+            "probe11_tiebreak_follows_input_order": v11,
         },
         "probe10_turn_influence_rate": round(p10, 4),
         "probe10_turn_influence_perturbations": p10_n,
         "probe10_panel_membership_change_rate": round(p10_disp_rate, 4),
+        "probe11_tiebreak": p11,
         "probe0_null_whitespace_change_rate": round(p0, 4),
         "probe0_null_surface_change_rate": round(p0b, 4),
         "detector_false_positive_floor": round(detector_fp, 4),
@@ -578,6 +820,11 @@ def report(topics, as_json=False):
              obs["domainB_static_route_hit"], obs["domainB_dynamic_corpus_hit"]))
     print("  PROBE 8  persona layer（中性化）   结构变化率  %5.1f%%   （改了 %d 个 SKILL.md，其中 %d 个是十神人格）" % (p8_sig * 100, p8_changed, p8_persona))
     print("  PROBE 10 turn-influence（发言位）  跨发言位影响率 %5.1f%%   （%d 次扰动）" % (p10 * 100, p10_n))
+    print("  PROBE 11 tie-break（名册顺序控制）  A 只改顺序 %5.1f%%   B 只改权重 %5.1f%%   C 两者都改 %5.1f%%"
+          % (p11["cond_A_order_only"] * 100, p11["cond_B_weights_only"] * 100, p11["cond_C_both"] * 100))
+    print("         └ 条件D：权重全平时选中的人 = 文件行序前三？ %s   （%d/%d 兜底观测，%d 个排列）"
+          % ("n/a" if p11["cond_D_follows_among_fallback"] is None else "%5.1f%%" % (p11["cond_D_follows_among_fallback"] * 100),
+             p11["cond_D_fallback_obs"], p11["cond_D_fallback_obs"], p11["cond_D_permutations"]))
     print("         └ 面板成员变动率          %5.1f%%   （这是排序在工作，不是影响）" % (p10_disp_rate * 100))
     if parity_diff is None:
         print("  PROBE 9  table parity             跳过（找不到 skills/ask/SKILL.md）")
@@ -602,6 +849,12 @@ def report(topics, as_json=False):
     print("   · PROBE 5 = 100%  →  兜底路径就是「按力量取前三」，**权重向量就是路由器**。")
     print("   · PROBE 9  →  demo.py 里手抄了一份路由表；今天两份一致，但没有东西保证明天还一致。")
     print("   · PROBE 10 →  扰动一个发言位，**同时在场的别人**的音量一点没变 → 跨发言位影响率 0.0%。")
+    print("   · PROBE 11 →  **PROBE 5 的 100% 原来是一个混淆**。它同时动了两个变量：权重偏好 + tie-break 规则。")
+    print("     只改名册顺序（A）→ 0.0%：现有分数互不相同，顺序平时是惰性的。")
+    print("     权重全平后（D）→ 选中的三个人 **100%% = 文件里的行序前三**（n=%d）。"
+          % p11["cond_D_fallback_obs"])
+    print("     → **trump-profile.json 的键顺序是一份没写出来的治理模型**。"
+          "谁重排这个 JSON 的键，谁就改了「谁先开口」，而 diff 里只看到挪动的字段。")
     print("     同时「面板成员变动率」很高 —— 那只是**排序**在工作，不是影响。两者必须分开测，")
     print("     混在一起会把「没有回合之间的通道」变成一个 56% 的假信号。")
     print("     意思不是「面板很稳」，而是**面板根本不存在回合之间的通道**：")
@@ -624,7 +877,8 @@ def report(topics, as_json=False):
     for _lbl, _v in [("PROBE 6 可见", v6_vis), ("PROBE 6 条件性", v6_cond),
                      ("PROBE 7 领域A", v7_a), ("PROBE 7 领域B", v7_b),
                      ("PROBE 8 人格层", v8), ("PROBE 9 表一致", v9),
-                     ("PROBE 10 发言位影响", v10)]:
+                     ("PROBE 10 发言位影响", v10),
+                     ("PROBE 11 跟着行序走", v11)]:
         if _v["state"] == "OK":
             _ci = _v["ci"]
             _cis = "[%s, %s]" % (("%.2f" % _ci[0]) if _ci[0] is not None else "?",

@@ -76,15 +76,18 @@ So the repo ships a reproducible swap test (zero dependencies):
          +- positive control (added predicate)  all change  <- the router is doing its job
   PROBE 10 turn-influence (speaker slots)   cross-turn influence   0.0%   (210 perturbations)
          +- panel membership change            56.7%   (that is the sort key, not influence)
+  PROBE 11 tie-break (roster order control)  A order only 0.0%  B weights only 100.0%  C both 100.0%
+         +- condition D: with weights flat, selected three = first three in file order?  100.0%   (238/238 fallback observations, 14 permutations)
 
   -- Three-state results (value / observations / interval / applicability) ------------
     PROBE 6 visible          INADEQUATE      n of 9, needs at least 10
     PROBE 6 conditional      INADEQUATE      n of 4, needs at least 10
-    PROBE 7 domain A         OK  0.81  n of 21  95% CI 0.60 to 0.92
-    PROBE 7 domain B         OK  1.00  n of 12  95% CI 0.76 to 1.00
+    PROBE 7 domain A         OK  0.81  n of 21  95% CI 0.58 to 0.95
+    PROBE 7 domain B         OK  1.00  n of 12  95% CI 0.74 to 1.00
     PROBE 8 persona layer     NOT_APPLICABLE  n of 0
     PROBE 9 table parity      INADEQUATE      n of 9, needs at least 10
     PROBE 10 turn slots      OK  0.00  n of 210  95% CI 0.00 to 0.02
+    PROBE 11 follows order    OK  1.00  n of 238  95% CI 0.98 to 1.00
 
   PROBE 7  fallback (no route matched)   81.0% of questions fall back (4 real routes)
          +- second domain (ops/tech)       100.0% fall back (**0 real routes matched**)
@@ -115,6 +118,17 @@ So the repo ships a reproducible swap test (zero dependencies):
   not "a cast that changes with the question".
 - **PROBE 5 = 100%** -> the fallback path is literally "sort by score, take the top three",
   so **the weight vector is the router**.
+  **But PROBE 11 shows that sentence was a confound**: PROBE 5 moved *two* variables at once
+  (weight preference AND the tie-break rule), so it could only cover one of them. PROBE 11 splits them:
+  - **Condition A (roster order permuted, weights untouched) = 0.0%** -> with the current distinct
+    scores, the JSON key order is inert.
+  - **Condition D (weights flattened + 14 roster permutations) -> the selected three are the first
+    three in file order 100% of the time** (n of 238, 95% CI 0.98 to 1.00).
+  - -> **Python's sort is stable**, so when scores tie the tie-break is the **key order of
+    `trump-profile.json`**. Reordering those keys changes *who speaks first*, and the diff shows
+    nothing but moved lines.
+  - -> That is a **governance model nobody wrote down** -- more hidden than the weights, because it
+    changes no value, only order.
 - **PROBE 9** -> `demo.py` **hand-copies** a routing table and there is a second real one in
   `skills/ask/SKILL.md`. They agree today and nothing guarantees they will tomorrow -- which is
   why it is a **test**, not a comment.
@@ -162,7 +176,32 @@ read it as a simulation and you are over-reading it.
 
 > The probes came out of a Moltbook thread with @vina and @enza-ai ("swap the persona, watch the
 > output"), plus one correction from @clawrence-openclaw: "you perturbed the shipped prompt, not
-> the effective prompt."
+> the effective prompt".
+> PROBE 11's tie-break control came from @clawsonpractical on Moltbook
+> ("permute roster order while keeping every weight equal").
+
+### Where the intervals come from (do not read only the number in parentheses)
+
+Every `95% CI` in the table is a **Clopper-Pearson exact binomial interval** (bisection on the
+binomial CDF, zero third-party dependencies) -- not Wilson, not bootstrap.
+
+Why the change (forced by external evidence, not by preference):
+[AgentAudit](https://github.com/fragompul/agentaudit) (2026-10-22) shows that **pooled Wilson covers
+only 68.3% of the time** when you run each observation unit 10 times -- a nominal 95% interval that
+is really a 68% interval, i.e. **over-claiming**. Same work: pooled z Type-I error 14.3%, pooled
+McNemar 17.9%, versus task sign-flip 4.2% and task bootstrap 4.8% (nominal 5%).
+
+But the real object of that finding is **"pooled"**: treating repeated runs as independent samples
+systematically over-claims on data **with clustering**. This test has one observation per unit
+(topic) and **no clustering**, so the right tool is a **single-proportion exact interval**.
+
+Three rules:
+1. **n counts independent units.** Re-running the same topic does not add observations.
+2. **Boundaries must not degenerate.** At k=n, CP gives `[0.74, 1.00]`; bootstrap gives `[1.00, 1.00]`
+   -- it cannot see the side that was not observed, which is exactly over-claiming.
+3. **Check new statistics code against known values.** My first bisection had the direction flipped
+   and the boundary formulas swapped; only comparing the output against five known CP values exposed
+   it (it once printed `[0.0, 0.0]`, an interval that is impossible on sight).
 
 ### Install as a plugin
 
