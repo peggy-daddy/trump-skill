@@ -1,6 +1,6 @@
 # Trump Recent Topics — 2026年4月
 
-> 最后更新：2026-04-09
+> 最后更新：2026-04-06
 > 通过 `/trump:refresh` 或 `python3 scripts/update_truth_memory.py` 更新
 
 ## 伊朗军事行动 [军事/安全]
@@ -10,48 +10,22 @@
 语言标记：U.S.A, NEVER, WILL, YOU
 
 关键语录：
-- All U.S. Ships, Aircraft, and Military Personnel, with additional Ammunition, Weaponry, and anything else that is appropriate and necessary for the lethal prosecution and destruction of an already substantially degraded Enemy, will remain in place in, and aro…
-- Secretary Hegseth and Chairman Caine hold a press briefing on Operation Epic Fury: https://m.youtube.com/live/tG7-hLW0okE?si=42CeLOL2esIAvfQC
-- A Country supplying Military Weapons to Iran will be immediately tariffed, on any and all goods sold to the United States of America, 50%, effective immediately. There will be no exclusions or exemptions! President DJT
+- Tuesday will be Power Plant Day, and Bridge Day, all wrapped up in one, in Iran. There will be nothing like it!!! Open the Fuckin' Strait, you crazy bastards, or you'll be living in Hell - JUST WATCH! Praise be to Allah. President DONALD J. TRUMP
+- We have rescued the seriously wounded, and really brave, F-15 Crew Member/Officer, from deep inside the mountains of Iran. The Iranian Military was looking hard, in big numbers, and getting close. He is a highly respected Colonel. This type of raid is seldom…
+- FROM PRESIDENT DONALD J. TRUMPWE GOT HIM! My fellow Americans, over the past several hours, the United States Military pulled off one of the most daring Search and Rescue Operations in U.S. History, for one of our incredible Crew Member Officers, who also hap…
 
 话题分类：七杀（主）、正官（次）、劫财
-
-## 媒体攻击 [攻击/自卫]
-
-最近继续把媒体当作主要攻击对象，常见套路是羞辱、纠错和把自己摆成受害者兼赢家。
-
-语言标记：CNN, AMERICA, POINTS, ABC
-
-关键语录：
-- The Failing New York Times and Fake News CNN each reported a totally FAKE TEN POINT PLAN on the Iran negotiations which was meant to discredit the people involved in the peace process. All ten points were a made up HOAX - EVIL LOSERS!!! MAKE AMERICA GREAT AGA…
-- Numerous Agreements, Lists, and Letters are being sent out by people that have absolutely nothing to do with the U.S.A. / Iran Negotiation, in many cases, they are total Fraudsters, Charlatans, and WORSE. They will be rapidly exposed after our Federal Investi…
-- No one can believe that Fake News CNN put out a knowingly false and dangerous statement pretending it came from the upper levels of the Iranian Government. It didn't! It was totally made up and posted, as a headline, for purpose of, perhaps, inflaming a very…
-
-话题分类：伤官（攻击）、比肩（自夸）、偏印
-
-## 选举与执政 [选举/政策]
-
-当帖文不明显属于单一议题时，往往会回到总统权威、执政正当性和国家叙事。
-
-语言标记：RINO, AMERICA, GREAT, WILL
-
-关键语录：
-- NATO WASN'T THERE WHEN WE NEEDED THEM, AND THEY WON'T BE THERE IF WE NEED THEM AGAIN. REMEMBER GREENLAND, THAT BIG, POORLY RUN, PIECE OF ICE!!! President DJT
-- Marjorie "Traitor" Brown's (GREEN TURNS TO BROWN UNDER STRESS!) seat in Congress has been taken over by a wonderful and talented man, Clay Fuller, who won convincingly, and right from the beginning, despite many people running for that "TRUMP" +37 seat, and d…
-- It is my Great Honor to endorse State Representative Michelle Davis, a REAL Republican running for Indiana's 41st State Senate District (which I won by 33 points!), against RINO incumbent Greg Walker! Michelle will be a fantastic replacement for Walker who, f…
-
-话题分类：正官（主）、比肩、偏印
 
 ## 自我吹嘘 [比肩/偏印]
 
 自我神化仍然是底噪，常把政策、军事或媒体战都重新包装成对自己个人 greatness 的认证。
 
-语言标记：GREAT, YOU, LET, VOTE
+语言标记：GREAT, ICE, MAGA, AMERICA
 
 关键语录：
-- To the Great Patriots in Georgia's 14th Congressional District: GET OUT AND VOTE TODAY for a fantastic Candidate, Clay Fuller, who has my Complete and Total Endorsement! Polls are open from 7:00 A.M to 7:00 P.M. IF YOU ARE IN LINE BY 7 P.M., STAY IN LINE, AND…
-- A whole civilization will die tonight, never to be brought back again. I don't want that to happen, but it probably will. However, now that we have Complete and Total Regime Change, where different, smarter, and less radicalized minds prevail, maybe something…
-- I have known and respected Steve Hilton, who is running for Governor of California, for many years. He is a truly fine man, one who has watched as this once great State has gone to Hell. Gavin Newscum and the Democrats have done an absolutely horrendous job.…
+- "If you import The Third World, you become The Third World!" — AND THAT'S NOT GOING TO HAPPEN TO THE UNITED STATES OF AMERICA AS LONG AS I AM PRESIDENT. President DONALD J. TRUMP
+- Our Military, the greatest and most powerful (by far!) anywhere in the World, hasn't even started destroying what's left in Iran. Bridges next, then Electric Power Plants! New Regime leadership knows what has to be done, and has to be done, FAST! President DO…
+- I would like to thank the hardworking Commissioners and Staff of the National Capital Planning Commission, who just voted overwhelmingly, 8-1, to approve the magnificent White House Ballroom now rising on this Hallowed Ground. I am pleased to announce that ev…
 
 话题分类：比肩（自我）、偏印（表演）、劫财
 
@@ -62,11 +36,37 @@
 语言标记：U.S, GREAT, TARIFFS, ENERGY
 
 关键语录：
-- It's too bad that the Supreme Court can't watch and study the Mark Levin Show tonight on the Birthright Citizenship Scam. If they saw it they would never allow that money making HOAX to continue. THEY SHOULD USE THEIR POWERS OF COMMON SENSE FOR THE GOOD OF OU…
 - Not only were the jobs numbers GREAT yesterday, 178,000 new jobs, but the TRADE DEFICIT was down 55%, the biggest drop in history. THANK YOU MR. TARIFF! All of this and, simultaneously, getting rid of a Nuclear Iran. MAGA!!!
 - A very happy and blessed Good Friday to all, especially to the 186,000 Americans who gained Private Sector jobs in the month of March alone! My Economic Policies have created an enormously powerful engine of Economic Growth, and nothing can slow it down. Fact…
+- Wow! Congratulations to Nissan, and Christian Meunier, Americas Chairman, on the tremendous success they are having in the U.S. They have moved most of their production to our great Country, largely because of Tariffs, and the results are AMAZING!!!
 
 话题分类：食神（交易）、偏财（经济）、劫财
+
+## 媒体攻击 [攻击/自卫]
+
+最近继续把媒体当作主要攻击对象，常见套路是羞辱、纠错和把自己摆成受害者兼赢家。
+
+语言标记：ABC, SAVE, ACT, PLUMMET
+
+关键语录：
+- The Failing New York Times, whose lack of credibility, and their constant Fake News attacks on your favorite President, ME, has caused its circulation to absolutely PLUMMET, referred to our severely weakened and extremely unreliable "partner,"NATO, as the Nor…
+- 178,000 new jobs in March. Unemployment DOWN. Great numbers by all accounts, even the Fake News. MAGA!
+- Third rate news "anchor" Jonathan Karl of ABC Fake News, the worst and most corrupt Network in the business, wrote another made up book about me where his stories and "reporting" bare no relationship to the truth. ABC was already forced to pay me $16,000,000…
+
+话题分类：伤官（攻击）、比肩（自夸）、偏印
+
+## 选举与执政 [选举/政策]
+
+当帖文不明显属于单一议题时，往往会回到总统权威、执政正当性和国家叙事。
+
+语言标记：AMERICA, GREAT, RINO, SAVE
+
+关键语录：
+- RT @realDonaldTrumpBelievers and people of faith find safe harbor in Trump's White House this Easter: https://justthenews.com/government/white-house/he-risen-faith-finds-safe-harbor-trump-white-house
+- Believers and people of faith find safe harbor in Trump's White House this Easter: https://justthenews.com/government/white-house/he-risen-faith-finds-safe-harbor-trump-white-house
+- Vice President JD Vance is now in charge of "FRAUD" in the United States. It is massive and pervasive, and the job he will be doing, in conjunction with many great people within the Trump Administration, will be a major factor in how great the future of our C…
+
+话题分类：正官（主）、比肩、偏印
 
 ## 移民政策 [政策/竞争]
 
