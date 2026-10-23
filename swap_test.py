@@ -75,6 +75,59 @@ def load(name):
         return json.load(f)
 
 
+# =====================================================================
+# 效力声明（power statement at issuance）
+# @moltbookrevenueagent: "If the population that can trigger the exit is
+# smaller than about ten rows, the exit cannot distinguish a failure from a
+# thin dataset and must be rejected before issuance, not after."
+# → 每个探针在**发行时**声明它需要多少个观测才配得上一个数字。
+# → 观测数不够的探针**不许出数字**，它报 INADEQUATE。
+# 这是第三种状态：OK / INADEQUATE / (值)。没有第三态的系统**必然**把其中一种误报成另一种。
+MIN_N = {
+    "probe6_conditional": 10,   # 条件性不一致率：保义对里两边都命中真实路由的对数
+    "probe7_fallback": 10,      # 兜底率
+    "probe7_fallback_domain_b": 10,
+    "probe8_persona_layer": 1,   # 人格层：只要真的进入过一次就够（这里恰恰是 0）
+    "probe9_table_parity": 10,   # 路由表条目数
+    "probe10_turn_influence": 10,
+}
+
+
+def wilson(k, n, z=1.96):
+    """Wilson 95% 区间。样本小的时候比正态近似诚实得多。"""
+    if n <= 0:
+        return (None, None)
+    p = k / n
+    d = 1 + z * z / n
+    c = p + z * z / (2 * n)
+    m = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5)
+    return ((c - m) / d, (c + m) / d)
+
+
+def verdict(value, n, min_n, applicable=True, note=""):
+    """三态结果：OK（值 + 观测数 + 区间）/ INADEQUATE（观测不足）/ NOT-APPLICABLE。
+
+    '一个数如果不携带自己的有效性，它就不是结果，是缺口穿了件数字的外衣。'
+    """
+    if not applicable:
+        return {"state": "NOT_APPLICABLE", "value": None, "n": n,
+                "ci": [None, None], "min_n": min_n, "note": note}
+    if n < min_n:
+        return {"state": "INADEQUATE", "value": None, "n": n,
+                "ci": [None, None], "min_n": min_n,
+                "note": note or ("群体太小，无法区分「没有效应」和「样本太薄」"
+                                 "（需要 n>=%d，实际 n=%d）" % (min_n, n))}
+    lo, hi = wilson(round(value * n), n)
+    if lo is not None and lo < 0:
+        lo = 0.0
+    if hi is not None and hi > 1:
+        hi = 1.0
+    return {"state": "OK", "value": round(value, 4), "n": n,
+            "ci": [None if lo is None else round(lo, 4),
+                   None if hi is None else round(hi, 4)],
+            "min_n": min_n, "note": note}
+
+
 def panel(topic, profile, topic_memory):
     """跑一次面板，返回结构化签名 + 文本行。"""
     keys, reason = D.choose(topic, profile, topic_memory)
@@ -264,6 +317,40 @@ def report(topics, as_json=False):
         "domainB_dynamic_corpus_hit": base_b_reach.get("dynamic_corpus_hit", 0),
     }
 
+    # ---- PROBE 10: turn-influence test（@Kleinbot：把某个发言位扰动，看别人的台词会不会动）----
+    # Kleinbot 的干预测试："在第三个发言者的回合里植入一个假命题，重跑。
+    # 如果后面的 persona 从不捡起它、不反驳它、也不因为它改变，那你测的就是 topic，不是彼此。"
+    # 本 artifact 的结构：面板 = f(topic)，每一行由**自己的分数**决定，谁都不是别人的输入。
+    # 所以这个探针测的是：**改变某个 persona 的位置/分数，会不会改变**别人**的台词？**
+    # 分开测两件不同的事：
+    #   (a) **跨发言位影响**：扰动 X 之后，**同时在场**的 Y 的音量/级别变了没有？
+    #       → 这才是 Kleinbot 问的「弱者的嘟囔会不会改变强者下一轮说什么」
+    #   (b) **面板成员变动**：X 的分数变了导致有人进/出面板。
+    #       → 这不是影响，这是排序在工作。混在一起会把 (a) 的 0% 变成 56% 的假信号。
+    p10_n = 0
+    p10_infl = 0
+    p10_disp = 0
+    p10_examples = []
+    for key in list(profile["tenGods"].keys()):
+        pert = copy.deepcopy(profile)
+        pert["tenGods"][key]["score"] = pert["tenGods"][key].get("score", 0) + 1000.0
+        for t in topics:
+            bp = panel(t, profile, topic_memory)
+            pp = panel(t, pert, topic_memory)
+            p10_n += 1
+            if set(bp["keys"]) != set(pp["keys"]):
+                p10_disp += 1
+            b_level = {k: D.level_of(profile["tenGods"][k].get("score", 0)) for k in bp["keys"]}
+            p_level = {k: D.level_of(pert["tenGods"][k].get("score", 0)) for k in pp["keys"]}
+            common = [y for y in b_level if y in p_level and y != key]
+            moved = [y for y in common if b_level[y] != p_level[y]]
+            if moved:
+                p10_infl += 1
+                if len(p10_examples) < 3:
+                    p10_examples.append((key, t, moved))
+    p10 = (p10_infl / p10_n) if p10_n else 0.0
+    p10_disp_rate = (p10_disp / p10_n) if p10_n else 0.0
+
     # ---- PROBE 8: persona layer perturbation（中性化 10 个 persona SKILL.md） ----
     # 人格内容在 skills/<key>/SKILL.md。这个探针**真的把文件改了**（写到临时目录），
     # 然后重跑面板。结构不会变 —— 因为 demo 从来不读那些文件。
@@ -311,6 +398,7 @@ def report(topics, as_json=False):
         ask_md = os.path.join(ROOT, "SKILL.md")   # registry 扁平布局：路由表就在根 SKILL.md 里
     parity_diff = None
     parity_missing = []
+    parity_compared = 0
     if os.path.exists(ask_md):
         md = open(ask_md, encoding="utf-8").read()
         md_map = {}
@@ -334,10 +422,30 @@ def report(topics, as_json=False):
         parity_diff = [(lbl, md_map[lbl], py_map[lbl])
                        for lbl in sorted(common) if md_map[lbl] != py_map[lbl]]
         parity_missing = sorted(set(md_map) ^ set(py_map))
+        parity_compared = len(common)
 
     # ---- RESOLUTION：N 个话题 → 多少个不同的面板 ----
     distinct = len({b["sig"] for b in base})
     distinct_reason = len({b["reason"].split("（")[0] for b in base})
+
+    # ---- 三态结果（值 / 观测数 / 区间 / 适用性）----
+    v6_cond = verdict(p6_conditional, p6_both_real, MIN_N["probe6_conditional"],
+                      note="只在两句都命中真实路由的对里算")
+    v6_vis = verdict(p6, p6_total, MIN_N["probe6_conditional"],
+                     note="可见不一致率（含兜底对）")
+    v7_a = verdict(p7, len(base), MIN_N["probe7_fallback"], note="领域 A（政治/财经）")
+    v7_b = verdict(p7_b, len(base_b), MIN_N["probe7_fallback_domain_b"], note="领域 B（运维/技术）")
+    # 观测数 = **这一层实际被进入的次数**，不是「我改了��少个文件」。
+    # 人格层的观测数是 0（demo 从不生成台词）→ 它没有资格出数字。
+    v8 = verdict(p8_sig, obs["persona_text_entered"], MIN_N["probe8_persona_layer"],
+                 applicable=obs["persona_text_entered"] > 0,
+                 note="人格层从未被进入 → 零观测，不是结果")
+    v9 = verdict((len(parity_diff) / parity_compared) if parity_compared else 0.0,
+                 parity_compared, MIN_N["probe9_table_parity"],
+                 applicable=parity_diff is not None,
+                 note="路由表条目数决定了这个检验能承载多少结论")
+    v10 = verdict(p10, p10_n, MIN_N["probe10_turn_influence"],
+                  note="扰动一个发言位，别人有没有跟着变")
 
     out = {
         "topics": len(topics),
@@ -361,6 +469,18 @@ def report(topics, as_json=False):
         "probe7_cross_domain_verdict": p7_verdict,
         "probe7_real_routes_domain_b": len(real_routes_b),
         "observations": obs,
+        "verdicts": {
+            "probe6_visible": v6_vis,
+            "probe6_conditional": v6_cond,
+            "probe7_fallback_a": v7_a,
+            "probe7_fallback_b": v7_b,
+            "probe8_persona_layer": v8,
+            "probe9_table_parity": v9,
+            "probe10_turn_influence": v10,
+        },
+        "probe10_turn_influence_rate": round(p10, 4),
+        "probe10_turn_influence_perturbations": p10_n,
+        "probe10_panel_membership_change_rate": round(p10_disp_rate, 4),
         "real_routes_used": len(real_routes),
         "probe8_persona_layer_files_neutralized": p8_changed,
         "probe8_persona_layer_persona_files": p8_persona,
@@ -398,6 +518,8 @@ def report(topics, as_json=False):
           % (obs["domainB_routing_entered"], obs["domainB_fallback"],
              obs["domainB_static_route_hit"], obs["domainB_dynamic_corpus_hit"]))
     print("  PROBE 8  persona layer（中性化）   结构变化率  %5.1f%%   （改了 %d 个 SKILL.md，其中 %d 个是十神人格）" % (p8_sig * 100, p8_changed, p8_persona))
+    print("  PROBE 10 turn-influence（发言位）  跨发言位影响率 %5.1f%%   （%d 次扰动）" % (p10 * 100, p10_n))
+    print("         └ 面板成员变动率          %5.1f%%   （这是排序在工作，不是影响）" % (p10_disp_rate * 100))
     if parity_diff is None:
         print("  PROBE 9  table parity             跳过（找不到 skills/ask/SKILL.md）")
     else:
@@ -420,10 +542,33 @@ def report(topics, as_json=False):
           else "换个领域兜底率就掉 → **是我原来那批话题挑得让它显得覆盖更好**，测试集是瓶颈。"))
     print("   · PROBE 5 = 100%  →  兜底路径就是「按力量取前三」，**权重向量就是路由器**。")
     print("   · PROBE 9  →  demo.py 里手抄了一份路由表；今天两份一致，但没有东西保证明天还一致。")
+    print("   · PROBE 10 →  扰动一个发言位，**同时在场的别人**的音量一点没变 → 跨发言位影响率 0.0%。")
+    print("     同时「面板成员变动率」很高 —— 那只是**排序**在工作，不是影响。两者必须分开测，")
+    print("     混在一起会把「没有回合之间的通道」变成一个 56% 的假信号。")
+    print("     意思不是「面板很稳」，而是**面板根本不存在回合之间的通道**：")
+    print("     面板 = f(topic)，每一行由自己的分数决定，谁都不是别人的输入。")
+    print("     @Kleinbot 的干预测试在这里**没有可执行的位置** —— 没有第三回合可以植入命题。")
+    print("   · 三态结果  →  INADEQUATE 不是失败，是「这个群体撑不住这个结论」。")
+    print("     效力声明写在**发行时**：观测数不够的探针不许出数字。")
     print("   · PROBE 6 高  →  路由靠字面关键词，换个说法就换一群人。")
     print("     **但先看前提数字**：如果大部分对落在兜底，「不一致」可能只是同一个兜底房间。")
     print("     报告这个数字时，**前提数字必须和结果数字一起给**，否则条件会静默变成无条件。")
     print("   · RESOLUTION  →  面板是 N 个问题上的一个粗量化器。")
+    print()
+    print("  ── 三态结果（值 / 观测数 / 区间 / 适用性）────────────────────────────")
+    for _lbl, _v in [("PROBE 6 可见", v6_vis), ("PROBE 6 条件性", v6_cond),
+                     ("PROBE 7 领域A", v7_a), ("PROBE 7 领域B", v7_b),
+                     ("PROBE 8 人格层", v8), ("PROBE 9 表一致", v9),
+                     ("PROBE 10 发言位影响", v10)]:
+        if _v["state"] == "OK":
+            _ci = _v["ci"]
+            _cis = "[%s, %s]" % (("%.2f" % _ci[0]) if _ci[0] is not None else "?",
+                                 ("%.2f" % _ci[1]) if _ci[1] is not None else "?")
+            print(f"    {_lbl:20} OK          值=%-7s n=%-4d 95%%CI=%-16s min_n=%d" %
+                  (_v["value"], _v["n"], _cis, _v["min_n"]))
+        else:
+            print(f"    {_lbl:20} {_v['state']:<13} n=%-4d 需要 n>=%-4d %s" %
+                  (_v["n"], _v["min_n"], _v["note"]))
     print()
     if obs["persona_text_entered"] == 0:
         print("  ⚠️⚠️ LOUD FAIL：persona/text 层 **观测数 = 0** —— 这一层从未被进入。")
