@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-04-05T16:46:13.035954+00:00",
+  "updated_at": "2026-04-09T04:31:37.889458+00:00",
   "recent_days": 30,
   "topics": [
     {
@@ -11,52 +11,166 @@
         "正官（次）",
         "劫财"
       ],
-      "post_count": 137,
-      "latest_post_at": "2026-04-05T12:03:26.421Z",
+      "post_count": 162,
+      "latest_post_at": "2026-04-09T03:46:41.054Z",
       "summary": "最近持续围绕伊朗、军事打击和战果发声，语气以最后通牒、炫耀军力、宣布胜利为主。",
       "dominant_tones": [
-        "threat",
         "exclamation",
-        "statement",
-        "authority"
+        "threat",
+        "authority",
+        "statement"
       ],
       "language_markers": [
         "U.S.A",
         "NEVER",
         "WILL",
         "YOU",
-        "DOMINANCE",
-        "MADE"
+        "MADE",
+        "DOMINANCE"
       ],
       "matched_keywords": [
-        "iran",
         "military",
-        "hormuz",
+        "iran",
         "dominance",
+        "hormuz",
         "nuclear",
         "warrior",
-        "strike",
-        "lethal"
+        "lethal",
+        "airman"
       ],
       "retrieval_hint": "当用户提到 iran、tehran、military、strike、strikes 等词时，优先检索这个话题的近期语料。",
       "representative_quotes": [
         {
-          "published_at": "2026-04-05T12:03:26.421Z",
-          "text": "Tuesday will be Power Plant Day, and Bridge Day, all wrapped up in one, in Iran. There will be nothing like it!!! Open the Fuckin' Strait, you crazy bastards, or you'll be living in Hell - JUST WATCH! Praise be to Allah. President DONALD J. TRUMP",
-          "truth_original_id": "116351998782539414",
-          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116351998782539414"
+          "published_at": "2026-04-09T03:46:41.054Z",
+          "text": "All U.S. Ships, Aircraft, and Military Personnel, with additional Ammunition, Weaponry, and anything else that is appropriate and necessary for the lethal prosecution and destruction of an already substantially degraded Enemy, will remain in place in, and aro…",
+          "truth_original_id": "116372694697146221",
+          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116372694697146221"
         },
         {
-          "published_at": "2026-04-05T11:52:48.197Z",
-          "text": "We have rescued the seriously wounded, and really brave, F-15 Crew Member/Officer, from deep inside the mountains of Iran. The Iranian Military was looking hard, in big numbers, and getting close. He is a highly respected Colonel. This type of raid is seldom…",
-          "truth_original_id": "116351956955900185",
-          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116351956955900185"
+          "published_at": "2026-04-08T14:51:13.181Z",
+          "text": "Secretary Hegseth and Chairman Caine hold a press briefing on Operation Epic Fury: https://m.youtube.com/live/tG7-hLW0okE?si=42CeLOL2esIAvfQC",
+          "truth_original_id": "116369645448805093",
+          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116369645448805093"
         },
         {
-          "published_at": "2026-04-05T04:08:57.523Z",
-          "text": "FROM PRESIDENT DONALD J. TRUMPWE GOT HIM! My fellow Americans, over the past several hours, the United States Military pulled off one of the most daring Search and Rescue Operations in U.S. History, for one of our incredible Crew Member Officers, who also hap…",
-          "truth_original_id": "116350133044957842",
-          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116350133044957842"
+          "published_at": "2026-04-08T11:30:02.177Z",
+          "text": "A Country supplying Military Weapons to Iran will be immediately tariffed, on any and all goods sold to the United States of America, 50%, effective immediately. There will be no exclusions or exemptions! President DJT",
+          "truth_original_id": "116368854361048135",
+          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116368854361048135"
+        }
+      ]
+    },
+    {
+      "slug": "media-attacks",
+      "title": "媒体攻击",
+      "label": "攻击/自卫",
+      "ten_gods": [
+        "伤官（攻击）",
+        "比肩（自夸）",
+        "偏印"
+      ],
+      "post_count": 15,
+      "latest_post_at": "2026-04-09T02:56:26.208Z",
+      "summary": "最近继续把媒体当作主要攻击对象，常见套路是羞辱、纠错和把自己摆成受害者兼赢家。",
+      "dominant_tones": [
+        "attack",
+        "authority",
+        "exclamation",
+        "threat"
+      ],
+      "language_markers": [
+        "CNN",
+        "AMERICA",
+        "POINTS",
+        "ABC",
+        "SAVE",
+        "ACT"
+      ],
+      "matched_keywords": [
+        "fake news",
+        "new york times",
+        "cnn",
+        "media",
+        "failing",
+        "circulation"
+      ],
+      "retrieval_hint": "当用户提到 fake news、media、failing、new york times、cnn 等词时，优先检索这个话题的近期语料。",
+      "representative_quotes": [
+        {
+          "published_at": "2026-04-09T02:56:26.208Z",
+          "text": "The Failing New York Times and Fake News CNN each reported a totally FAKE TEN POINT PLAN on the Iran negotiations which was meant to discredit the people involved in the peace process. All ten points were a made up HOAX - EVIL LOSERS!!! MAKE AMERICA GREAT AGA…",
+          "truth_original_id": "116372497116210545",
+          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116372497116210545"
+        },
+        {
+          "published_at": "2026-04-08T16:04:40.825Z",
+          "text": "Numerous Agreements, Lists, and Letters are being sent out by people that have absolutely nothing to do with the U.S.A. / Iran Negotiation, in many cases, they are total Fraudsters, Charlatans, and WORSE. They will be rapidly exposed after our Federal Investi…",
+          "truth_original_id": "116369934305888462",
+          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116369934305888462"
+        },
+        {
+          "published_at": "2026-04-08T03:39:51.155Z",
+          "text": "No one can believe that Fake News CNN put out a knowingly false and dangerous statement pretending it came from the upper levels of the Iranian Government. It didn't! It was totally made up and posted, as a headline, for purpose of, perhaps, inflaming a very…",
+          "truth_original_id": "116367005523554168",
+          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116367005523554168"
+        }
+      ]
+    },
+    {
+      "slug": "election-governance",
+      "title": "选举与执政",
+      "label": "选举/政策",
+      "ten_gods": [
+        "正官（主）",
+        "比肩",
+        "偏印"
+      ],
+      "post_count": 96,
+      "latest_post_at": "2026-04-08T23:31:56.495Z",
+      "summary": "当帖文不明显属于单一议题时，往往会回到总统权威、执政正当性和国家叙事。",
+      "dominant_tones": [
+        "authority",
+        "exclamation",
+        "boast",
+        "threat"
+      ],
+      "language_markers": [
+        "RINO",
+        "AMERICA",
+        "GREAT",
+        "WILL",
+        "U.S.A",
+        "YOU"
+      ],
+      "matched_keywords": [
+        "president",
+        "america",
+        "democrat",
+        "election",
+        "republican",
+        "vote",
+        "white house",
+        "administration"
+      ],
+      "retrieval_hint": "当用户提到 president、administration、america、executive、white house 等词时，优先检索这个话题的近期语料。",
+      "representative_quotes": [
+        {
+          "published_at": "2026-04-08T23:31:56.495Z",
+          "text": "NATO WASN'T THERE WHEN WE NEEDED THEM, AND THEY WON'T BE THERE IF WE NEED THEM AGAIN. REMEMBER GREENLAND, THAT BIG, POORLY RUN, PIECE OF ICE!!! President DJT",
+          "truth_original_id": "116371693008302124",
+          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116371693008302124"
+        },
+        {
+          "published_at": "2026-04-08T16:20:14.868Z",
+          "text": "Marjorie \"Traitor\" Brown's (GREEN TURNS TO BROWN UNDER STRESS!) seat in Congress has been taken over by a wonderful and talented man, Clay Fuller, who won convincingly, and right from the beginning, despite many people running for that \"TRUMP\" +37 seat, and d…",
+          "truth_original_id": "116369995519355709",
+          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116369995519355709"
+        },
+        {
+          "published_at": "2026-04-07T20:20:56.510Z",
+          "text": "It is my Great Honor to endorse State Representative Michelle Davis, a REAL Republican running for Indiana's 41st State Senate District (which I won by 33 points!), against RINO incumbent Greg Walker! Michelle will be a fantastic replacement for Walker who, f…",
+          "truth_original_id": "116365279658494851",
+          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116365279658494851"
         }
       ]
     },
@@ -69,52 +183,52 @@
         "偏印（表演）",
         "劫财"
       ],
-      "post_count": 56,
-      "latest_post_at": "2026-04-04T19:00:54.687Z",
+      "post_count": 53,
+      "latest_post_at": "2026-04-07T19:17:03.866Z",
       "summary": "自我神化仍然是底噪，常把政策、军事或媒体战都重新包装成对自己个人 greatness 的认证。",
       "dominant_tones": [
-        "authority",
         "exclamation",
+        "authority",
         "boast",
         "threat"
       ],
       "language_markers": [
         "GREAT",
-        "ICE",
-        "MAGA",
-        "AMERICA",
-        "U.S",
-        "YOU"
+        "YOU",
+        "LET",
+        "VOTE",
+        "WILL",
+        "NEVER"
       ],
       "matched_keywords": [
         "me ",
         "my",
         "i am",
         "me,",
-        "greatest",
         "history",
+        "greatest",
         "best",
         "approval"
       ],
       "retrieval_hint": "当用户提到 i am、me,、me 、my、greatest 等词时，优先检索这个话题的近期语料。",
       "representative_quotes": [
         {
-          "published_at": "2026-04-04T19:00:54.687Z",
-          "text": "\"If you import The Third World, you become The Third World!\" — AND THAT'S NOT GOING TO HAPPEN TO THE UNITED STATES OF AMERICA AS LONG AS I AM PRESIDENT. President DONALD J. TRUMP",
-          "truth_original_id": "116347978035210577",
-          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116347978035210577"
+          "published_at": "2026-04-07T19:17:03.866Z",
+          "text": "To the Great Patriots in Georgia's 14th Congressional District: GET OUT AND VOTE TODAY for a fantastic Candidate, Clay Fuller, who has my Complete and Total Endorsement! Polls are open from 7:00 A.M to 7:00 P.M. IF YOU ARE IN LINE BY 7 P.M., STAY IN LINE, AND…",
+          "truth_original_id": "116365028482706995",
+          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116365028482706995"
         },
         {
-          "published_at": "2026-04-03T02:41:22.186Z",
-          "text": "Our Military, the greatest and most powerful (by far!) anywhere in the World, hasn't even started destroying what's left in Iran. Bridges next, then Electric Power Plants! New Regime leadership knows what has to be done, and has to be done, FAST! President DO…",
-          "truth_original_id": "116338464010194156",
-          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116338464010194156"
+          "published_at": "2026-04-07T12:06:39.151Z",
+          "text": "A whole civilization will die tonight, never to be brought back again. I don't want that to happen, but it probably will. However, now that we have Complete and Total Regime Change, where different, smarter, and less radicalized minds prevail, maybe something…",
+          "truth_original_id": "116363336033995961",
+          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116363336033995961"
         },
         {
-          "published_at": "2026-04-02T22:32:01.152Z",
-          "text": "I would like to thank the hardworking Commissioners and Staff of the National Capital Planning Commission, who just voted overwhelmingly, 8-1, to approve the magnificent White House Ballroom now rising on this Hallowed Ground. I am pleased to announce that ev…",
-          "truth_original_id": "116337483523761845",
-          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116337483523761845"
+          "published_at": "2026-04-06T05:21:36.744Z",
+          "text": "I have known and respected Steve Hilton, who is running for Governor of California, for many years. He is a truly fine man, one who has watched as this once great State has gone to Hell. Gavin Newscum and the Democrats have done an absolutely horrendous job.…",
+          "truth_original_id": "116356081038721731",
+          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116356081038721731"
         }
       ]
     },
@@ -127,8 +241,8 @@
         "偏财（经济）",
         "劫财"
       ],
-      "post_count": 11,
-      "latest_post_at": "2026-04-04T13:32:26.478Z",
+      "post_count": 12,
+      "latest_post_at": "2026-04-06T04:57:00.226Z",
       "summary": "近期频繁把关税包装成胜利叙事，同时把贸易和就业数字一起当作个人政绩。",
       "dominant_tones": [
         "dealmaking",
@@ -149,13 +263,19 @@
         "tariffs",
         "jobs",
         "deal",
+        "billions",
         "trade",
         "deals",
-        "deficit",
-        "billions"
+        "deficit"
       ],
       "retrieval_hint": "当用户提到 tariff、tariffs、trade、deal、deals 等词时，优先检索这个话题的近期语料。",
       "representative_quotes": [
+        {
+          "published_at": "2026-04-06T04:57:00.226Z",
+          "text": "It's too bad that the Supreme Court can't watch and study the Mark Levin Show tonight on the Birthright Citizenship Scam. If they saw it they would never allow that money making HOAX to continue. THEY SHOULD USE THEIR POWERS OF COMMON SENSE FOR THE GOOD OF OU…",
+          "truth_original_id": "116355984273646320",
+          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116355984273646320"
+        },
         {
           "published_at": "2026-04-04T13:32:26.478Z",
           "text": "Not only were the jobs numbers GREAT yesterday, 178,000 new jobs, but the TRADE DEFICIT was down 55%, the biggest drop in history. THANK YOU MR. TARIFF! All of this and, simultaneously, getting rid of a Nuclear Iran. MAGA!!!",
@@ -167,126 +287,6 @@
           "text": "A very happy and blessed Good Friday to all, especially to the 186,000 Americans who gained Private Sector jobs in the month of March alone! My Economic Policies have created an enormously powerful engine of Economic Growth, and nothing can slow it down. Fact…",
           "truth_original_id": "116342994589318293",
           "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116342994589318293"
-        },
-        {
-          "published_at": "2026-04-01T13:04:46.834Z",
-          "text": "Wow! Congratulations to Nissan, and Christian Meunier, Americas Chairman, on the tremendous success they are having in the U.S. They have moved most of their production to our great Country, largely because of Tariffs, and the results are AMAZING!!!",
-          "truth_original_id": "116329590740337581",
-          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116329590740337581"
-        }
-      ]
-    },
-    {
-      "slug": "media-attacks",
-      "title": "媒体攻击",
-      "label": "攻击/自卫",
-      "ten_gods": [
-        "伤官（攻击）",
-        "比肩（自夸）",
-        "偏印"
-      ],
-      "post_count": 11,
-      "latest_post_at": "2026-04-04T13:24:24.435Z",
-      "summary": "最近继续把媒体当作主要攻击对象，常见套路是羞辱、纠错和把自己摆成受害者兼赢家。",
-      "dominant_tones": [
-        "attack",
-        "exclamation",
-        "authority",
-        "boast"
-      ],
-      "language_markers": [
-        "ABC",
-        "SAVE",
-        "ACT",
-        "PLUMMET",
-        "NATO",
-        "NYT"
-      ],
-      "matched_keywords": [
-        "fake news",
-        "new york times",
-        "media",
-        "failing",
-        "circulation",
-        "cnn"
-      ],
-      "retrieval_hint": "当用户提到 fake news、media、failing、new york times、cnn 等词时，优先检索这个话题的近期语料。",
-      "representative_quotes": [
-        {
-          "published_at": "2026-04-04T13:24:24.435Z",
-          "text": "The Failing New York Times, whose lack of credibility, and their constant Fake News attacks on your favorite President, ME, has caused its circulation to absolutely PLUMMET, referred to our severely weakened and extremely unreliable \"partner,\"NATO, as the Nor…",
-          "truth_original_id": "116346654846871260",
-          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116346654846871260"
-        },
-        {
-          "published_at": "2026-04-04T03:03:18.464Z",
-          "text": "178,000 new jobs in March. Unemployment DOWN. Great numbers by all accounts, even the Fake News. MAGA!",
-          "truth_original_id": "116344212584161103",
-          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116344212584161103"
-        },
-        {
-          "published_at": "2026-04-04T02:58:15.255Z",
-          "text": "Third rate news \"anchor\" Jonathan Karl of ABC Fake News, the worst and most corrupt Network in the business, wrote another made up book about me where his stories and \"reporting\" bare no relationship to the truth. ABC was already forced to pay me $16,000,000…",
-          "truth_original_id": "116344192713238962",
-          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116344192713238962"
-        }
-      ]
-    },
-    {
-      "slug": "election-governance",
-      "title": "选举与执政",
-      "label": "选举/政策",
-      "ten_gods": [
-        "正官（主）",
-        "比肩",
-        "偏印"
-      ],
-      "post_count": 89,
-      "latest_post_at": "2026-04-04T13:12:22.098Z",
-      "summary": "当帖文不明显属于单一议题时，往往会回到总统权威、执政正当性和国家叙事。",
-      "dominant_tones": [
-        "authority",
-        "exclamation",
-        "boast",
-        "threat"
-      ],
-      "language_markers": [
-        "AMERICA",
-        "GREAT",
-        "RINO",
-        "SAVE",
-        "ICE",
-        "AGAIN"
-      ],
-      "matched_keywords": [
-        "president",
-        "america",
-        "democrat",
-        "election",
-        "republican",
-        "vote",
-        "white house",
-        "administration"
-      ],
-      "retrieval_hint": "当用户提到 president、administration、america、executive、white house 等词时，优先检索这个话题的近期语料。",
-      "representative_quotes": [
-        {
-          "published_at": "2026-04-04T13:12:22.098Z",
-          "text": "RT @realDonaldTrumpBelievers and people of faith find safe harbor in Trump's White House this Easter: https://justthenews.com/government/white-house/he-risen-faith-finds-safe-harbor-trump-white-house",
-          "truth_original_id": "116346607507796836",
-          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116346607507796836"
-        },
-        {
-          "published_at": "2026-04-04T03:21:05.277Z",
-          "text": "Believers and people of faith find safe harbor in Trump's White House this Easter: https://justthenews.com/government/white-house/he-risen-faith-finds-safe-harbor-trump-white-house",
-          "truth_original_id": "116344282496536118",
-          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116344282496536118"
-        },
-        {
-          "published_at": "2026-04-03T12:05:35.388Z",
-          "text": "Vice President JD Vance is now in charge of \"FRAUD\" in the United States. It is massive and pervasive, and the job he will be doing, in conjunction with many great people within the Trump Administration, will be a major factor in how great the future of our C…",
-          "truth_original_id": "116340682613576162",
-          "truth_original_url": "https://truthsocial.com/@realDonaldTrump/116340682613576162"
         }
       ]
     },
@@ -347,5 +347,5 @@
       ]
     }
   ],
-  "uncategorized_count": 70
+  "uncategorized_count": 76
 }

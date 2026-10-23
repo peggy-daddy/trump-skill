@@ -91,7 +91,15 @@ So the repo ships a reproducible swap test (zero dependencies):
 - **PROBE 9** -> `demo.py` **hand-copies** a routing table and there is a second real one in
   `skills/ask/SKILL.md`. They agree today and nothing guarantees they will tomorrow -- which is
   why it is a **test**, not a comment.
-- **PROBE 6 = 30%** -> routing is literal keyword matching. Say the same thing differently and
+- **PROBE 6 conditional disagreement = 0%** -> the router is **stable** under meaning-preserving
+  rewording. The visible 22.2% was almost entirely my **fallback**: a rewording that misses a keyword
+  drops into the default room instead of producing a different routing decision.
+  -> Two different diseases with the same symptom: brittle routing vs insufficient routing coverage.
+  -> **The precondition rate (44.4%) must be published next to the result**, or the condition silently
+  becomes part of the result.
+  - The positive control (a reword that adds a predicate) **must and does** change the cast.
+  - CORRECTION (2026-10-23): the "30% disagreement" I originally published was measuring the fallback's
+  consistency, not the router's brittleness.
   you get a different cast:
 
   ```

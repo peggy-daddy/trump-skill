@@ -1,92 +1,92 @@
 {
-  "updated_at": "2026-04-05T16:46:13.015388+00:00",
+  "updated_at": "2026-04-09T04:31:37.868854+00:00",
   "corpus": {
-    "total_posts": 26508,
-    "latest_post_at": "2026-04-05T12:03:26.421Z",
+    "total_posts": 26568,
+    "latest_post_at": "2026-04-09T03:46:41.054Z",
     "oldest_post_at": "2022-02-14T15:54:32.528Z"
   },
   "long_term_style": {
-    "avg_word_count": 36.57,
+    "avg_word_count": 36.7,
     "avg_sentence_count": 2.4,
     "avg_exclamation_count": 0.83,
     "top_all_caps_terms": [
       {
         "term": "GREAT",
-        "count": 1665
+        "count": 1671
       },
       {
         "term": "AMERICA",
-        "count": 1418
+        "count": 1424
       },
       {
         "term": "YOU",
-        "count": 1319
+        "count": 1349
       },
       {
         "term": "WILL",
-        "count": 1111
+        "count": 1138
       },
       {
         "term": "AGAIN",
-        "count": 1028
+        "count": 1031
       },
       {
         "term": "MAKE",
-        "count": 956
+        "count": 958
       },
       {
         "term": "U.S",
-        "count": 883
+        "count": 891
       },
       {
         "term": "MAGA",
-        "count": 851
+        "count": 857
       },
       {
         "term": "NEVER",
-        "count": 735
+        "count": 757
       },
       {
         "term": "DOWN",
-        "count": 660
+        "count": 686
       },
       {
         "term": "LET",
-        "count": 633
+        "count": 661
       },
       {
         "term": "FBI",
         "count": 571
       },
       {
+        "term": "NOT",
+        "count": 551
+      },
+      {
         "term": "ALL",
         "count": 551
       },
       {
-        "term": "NOT",
-        "count": 547
-      },
-      {
         "term": "BIG",
-        "count": 503
+        "count": 504
       }
     ],
     "top_voice_markers": [
       {
         "marker": "great",
-        "count": 4411
+        "count": 4432
       },
       {
         "marker": "maga",
-        "count": 1184
+        "count": 1190
       },
       {
         "marker": "make america great again",
-        "count": 953
+        "count": 955
       },
       {
         "marker": "fake news",
-        "count": 502
+        "count": 506
       },
       {
         "marker": "best",
@@ -98,15 +98,15 @@
       },
       {
         "marker": "worst",
-        "count": 442
+        "count": 443
       },
       {
         "marker": "everyone",
-        "count": 397
+        "count": 398
       },
       {
         "marker": "tremendous",
-        "count": 360
+        "count": 365
       },
       {
         "marker": "greatest",
@@ -124,31 +124,31 @@
     "dominant_tones": [
       {
         "tone": "exclamation",
-        "count": 12512
+        "count": 12558
       },
       {
         "tone": "statement",
-        "count": 9709
+        "count": 9719
       },
       {
         "tone": "authority",
-        "count": 9160
+        "count": 9200
       },
       {
         "tone": "boast",
-        "count": 5592
+        "count": 5613
       },
       {
         "tone": "threat",
-        "count": 1630
+        "count": 1666
       },
       {
         "tone": "dealmaking",
-        "count": 1228
+        "count": 1235
       },
       {
         "tone": "attack",
-        "count": 676
+        "count": 680
       }
     ],
     "generation_rules": [

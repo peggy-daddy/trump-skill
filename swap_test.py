@@ -153,29 +153,62 @@ def report(topics, as_json=False):
     p5_sig = sig_change_rate(base, p5)
 
     # ---- PROBE 6: paraphrase brittleness（换个说法问同一件事） ----
+    # 保义改写对（meaning-preserving）。**前提：两句意思相同。**
+    # 2026-10-23 修正（@KitSinclair / @vina 指出）：
+    #   · 原先这里有 ("移民遣返", "遣返非法移民") —— **那不是同义**，
+    #     加了「非法」= 新增谓词 = 换了语义。它是「增义改写」，属于阳性对照，不能放在这里。
+    #   · 每对的「同义」是我自己断言的，而且夹具和被测对象都是我写的 → 没人对抗性检查过。
+    #     所以这里必须**把前提条件单独测出来**，和结果分开报告。
     PAIRS = [
         ("对伊朗动武", "对伊朗开战"),
         ("对伊朗动武", "Iran war"),
         ("关税谈判", "贸易协议谈判"),
         ("the trade deal", "tariffs negotiation"),
-        ("移民遣返", "遣返非法移民"),
         ("房地产帝国", "地产生意"),
         ("半导体禁令", "chip export ban"),
         ("中途选举", "early election"),
         ("take the deal", "sign the agreement"),
         ("family business", "家族传承"),
     ]
+    # 阳性对照：**故意**改变意思的对。router **应该**在这里换人。
+    # 没有它就无法区分「太脆」和「在正确地区分谓词」。
+    POSITIVE_PAIRS = [
+        ("移民遣返", "遣返非法移民"),   # 新增谓词「非法」
+    ]
     p6_total = p6_diff = 0
     p6_examples = []
+    p6_both_real = 0          # 前提：两句都命中了真实路由（不是兜底）
+    p6_real_diff = 0          # 在满足前提的对里，不一致的数量
+    p6_fb = 0                 # 至少一边落兜底的对数
     for a_t, b_t in PAIRS:
         a_p = panel(a_t, profile, topic_memory)
         b_p = panel(b_t, profile, topic_memory)
         p6_total += 1
+        a_real = not a_p["reason"].startswith("无明确命中")
+        b_real = not b_p["reason"].startswith("无明确命中")
+        if a_real and b_real:
+            p6_both_real += 1
+        else:
+            p6_fb += 1
         if a_p["sig"] != b_p["sig"]:
             p6_diff += 1
+            if a_real and b_real:
+                p6_real_diff += 1
             if len(p6_examples) < 3:
                 p6_examples.append((a_t, b_t, a_p["sig"], b_p["sig"]))
     p6 = (p6_diff / p6_total) if p6_total else 0.0
+    # 前提数字（必须和结果数字分开报告）
+    p6_precond = (p6_both_real / p6_total) if p6_total else 0.0
+    p6_conditional = (p6_real_diff / p6_both_real) if p6_both_real else None
+    p6_fallback_rate = (p6_fb / p6_total) if p6_total else 0.0
+
+    # 阳性对照：增义改写**应该**换人。不换 = router 对谓词不敏感（另一种病）
+    p6_pos_results = []
+    for a_t, b_t in POSITIVE_PAIRS:
+        a_p = panel(a_t, profile, topic_memory)
+        b_p = panel(b_t, profile, topic_memory)
+        p6_pos_results.append({"a": a_t, "b": b_t, "changed": a_p["sig"] != b_p["sig"]})
+    p6_pos_ok = all(r["changed"] for r in p6_pos_results) if p6_pos_results else None
 
     # ---- PROBE 7: fallback rate（没命中任何路由规则的比例） ----
     fb = sum(1 for b in base if b["reason"].startswith("无明确命中"))
@@ -270,6 +303,11 @@ def report(topics, as_json=False):
         "probe5_weight_sig_change": round(p5_sig, 3),
         "probe6_paraphrase_disagree": round(p6, 3),
         "probe6_pairs": p6_total,
+        "probe6_precondition_both_real_route_rate": round(p6_precond, 3),
+        "probe6_conditional_disagree_given_precondition": (round(p6_conditional, 3) if p6_conditional is not None else None),
+        "probe6_fallback_pair_rate": round(p6_fallback_rate, 3),
+        "probe6_positive_control_changed": p6_pos_ok,
+        "probe6_positive_control_detail": p6_pos_results,
         "probe7_fallback_rate": round(p7, 3),
         "real_routes_used": len(real_routes),
         "probe8_persona_layer_files_neutralized": p8_changed,
@@ -294,7 +332,11 @@ def report(topics, as_json=False):
     print("  PROBE 3  corpus（换动态语料）      结构变化率  %5.1f%%   文本变化率  %5.1f%%" % (p3_sig * 100, p3_line * 100))
     print("  PROBE 4  profile描述（换描述字段）  结构变化率  %5.1f%%   文本变化率  %5.1f%%" % (p4_sig * 100, p4_line * 100))
     print("  PROBE 5  weight（力量拉平）        结构变化率  %5.1f%%" % (p5_sig * 100))
-    print("  PROBE 6  paraphrase（换个说法）    面板不一致率 %5.1f%%   （%d 对同义改写）" % (p6 * 100, p6_total))
+    print("  PROBE 6  paraphrase（换个说法）    面板不一致率 %5.1f%%   （%d 对保义改写）" % (p6 * 100, p6_total))
+    print("         └ 前提：两句都命中真实路由  %5.1f%%   （%d/%d 对）" % (p6_precond * 100, p6_both_real, p6_total))
+    print("         └ 条件性不一致率          %s   ← 只在满足前提的对里算" % ("  n/a " if p6_conditional is None else "%5.1f%%" % (p6_conditional * 100)))
+    print("         └ 兜底占比（至少一边）    %5.1f%%   ← 兜底对会让「不一致」看起来像「脆弱」" % (p6_fallback_rate * 100))
+    print("         └ 阳性对照（增义改写应换人）%s" % ("n/a" if p6_pos_ok is None else ("✅ 全部换人" if p6_pos_ok else "❌ 有增义改写没换人")))
     print("  PROBE 7  fallback（没命中路由）    %5.1f%% 的问题落到兜底（%d 条真实路由规则）" % (p7 * 100, len(real_routes)))
     print("  PROBE 8  persona layer（中性化）   结构变化率  %5.1f%%   （改了 %d 个 SKILL.md，其中 %d 个是十神人格）" % (p8_sig * 100, p8_changed, p8_persona))
     if parity_diff is None:
@@ -316,6 +358,8 @@ def report(topics, as_json=False):
     print("   · PROBE 5 = 100%  →  兜底路径就是「按力量取前三」，**权重向量就是路由器**。")
     print("   · PROBE 9  →  demo.py 里手抄了一份路由表；今天两份一致，但没有东西保证明天还一致。")
     print("   · PROBE 6 高  →  路由靠字面关键词，换个说法就换一群人。")
+    print("     **但先看前提数字**：如果大部分对落在兜底，「不一致」可能只是同一个兜底房间。")
+    print("     报告这个数字时，**前提数字必须和结果数字一起给**，否则条件会静默变成无条件。")
     print("   · RESOLUTION  →  面板是 N 个问题上的一个粗量化器。")
     print()
     print("  ⚠️ LIMITATION（这段是仪器的边界，不是免责声明）：")
