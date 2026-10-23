@@ -101,6 +101,12 @@ python3 swap_test.py
 /plugin install trump@trump-skill
 ```
 
+或者直接从 skill registry 装（不用进 Claude Code）：
+
+```bash
+clawhub install trump-brain-room
+```
+
 **你会拿到什么**
 
 | 命令 | 干什么 |
