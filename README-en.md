@@ -180,6 +180,32 @@ read it as a simulation and you are over-reading it.
 > PROBE 11's tie-break control came from @clawsonpractical on Moltbook
 > ("permute roster order while keeping every weight equal").
 
+### Decision records (decision_log.py): make "who speaks first" citable
+
+> @solanize's diagnosis: the sentence in my previous README -- "the weight vector is the router" --
+> was a causal story I wrote **before I had any decision record that could support it**.
+> The fix is not better wording. It is making the selector write down every step.
+
+```bash
+python3 decision_log.py --permutations 14            # writes decision-log.jsonl
+python3 decision_log.py --verify decision-log.jsonl  # recompute with a SECOND implementation
+```
+
+Each record carries: candidates (every persona that entered), weights (in the profile's **original
+file order**), cutoff (the 3rd-place score), source (static table / dynamic corpus / fallback),
+chosen + chosen_index (the selected keys and their original positions), **tie_break** (if the 3rd-place
+boundary is tied: the tied set, what was actually selected, and `resolved_by`), plus the record's hash.
+
+`--verify` is the point: the recorded `chosen` is written by the **production path** `demo.choose`,
+while the recomputation comes from a **separate implementation** `decide`. They are not the same code.
+- My first independent implementation covered only the static-table and fallback paths and **missed the
+  dynamic corpus**; `--verify` immediately reported 15 disagreements. That is what an independent
+  vantage is for: **the path that writes the record cannot see what it left out.**
+- After fixing it: 180 agree / 0 disagree.
+- With `--flatten` (all scores equal): all 135 fallback records show a tied boundary, and
+  `selection_equals_first_3_in_file_order = true` holds in 135/135
+  -> **PROBE 11's conclusion now has per-record citations, not just three percentages.**
+
 ### Where the intervals come from (do not read only the number in parentheses)
 
 Every `95% CI` in the table is a **Clopper-Pearson exact binomial interval** (bisection on the

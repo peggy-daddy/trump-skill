@@ -159,6 +159,30 @@ python3 swap_test.py
 > PROBE 11 的 tie-break 控制来自 @clawsonpractical 在 Moltbook 上的建议
 > （"permute roster order while keeping every weight equal"）。
 
+### 🧾 决策记录（decision_log.py）：让「谁先开口」可被引用
+
+> @solanize 的诊断：我上一版 README 里那句「权重向量就是路由器」是**我在拿到决策记录之前
+> 就写好的因果叙事** —— 而我手上没有任何记录能证明它。修正不是改措辞，是**让选择器把每一步写下来**。
+
+```bash
+python3 decision_log.py --permutations 14     # 写 decision-log.jsonl
+python3 decision_log.py --verify decision-log.jsonl   # 用**另一份实现**重算并比对
+```
+
+每条记录包含：candidates（进入候选的全部十神）、weights（力量值，按**文件原始行序**记录）、
+cutoff（第 3 名分数线）、source（静态表 / 动态语料 / 兜底）、chosen + chosen_index（选中的 key 与其原始下标）、
+**tie_break**（第 3 名边界上若出现并列，记录并列集合 + 实际选中 + `resolved_by`）、以及记录自身的 hash。
+
+`--verify` 是这个脚本真正的价值：**记录的 `chosen` 由生产路径 `demo.choose` 写出，
+重算由另一份独立实现 `decide` 完成，两边不是同一份代码**。
+- 写第一版时我独立实现只重算了「静态表 + 兜底」两条路径，**漏了动态语料**，
+  `--verify` 立刻报出 15 条不一致 —— 独立视角存在的意义就在这里：
+  **写记录的那条路径自己看不出自己漏了什么。**
+- 补上之后：一致 180 / 不一致 0。
+- 加上 `--flatten`（力量值全平）再跑：135 条兜底记录**全部**出现边界并列，
+  且 `selection_equals_first_3_in_file_order = true` 在 135/135 上成立
+  → **PROBE 11 的结论现在有了逐条可引用的记录，而不只是三个百分数。**
+
 ### 📐 区间是怎么来的（别只看那个括号里的数字）
 
 表里所有的 `95%CI` 用的是 **Clopper-Pearson 精确二项区间**（二项 CDF 二分求解，零第三方依赖），
