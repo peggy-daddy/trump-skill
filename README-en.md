@@ -66,7 +66,23 @@ So the repo ships a reproducible swap test (zero dependencies):
   PROBE 3  corpus (swap live corpus)     structure changed    4.8%   text changed    4.8%
   PROBE 4  profile desc (swap desc)      structure changed    0.0%   text changed  100.0%
   PROBE 5  weight (flatten scores)       structure changed  100.0%
-  PROBE 6  paraphrase (reword it)        panel disagrees     30.0%   (10 synonym pairs)
+  PROBE 6  paraphrase (reword it)        panel disagrees     22.2%   (9 meaning-preserving pairs)
+         +- precondition: both hit a real route  44.4%   (4 of 9)   <- the premise, measured
+         +- conditional disagreement rate         0.0%   <- over n of 4: see INADEQUATE below
+         +- fallback pair rate                   55.6%
+         +- positive control (added predicate)  all change  <- the router is doing its job
+  PROBE 10 turn-influence (speaker slots)   cross-turn influence   0.0%   (210 perturbations)
+         +- panel membership change            56.7%   (that is the sort key, not influence)
+
+  -- Three-state results (value / observations / interval / applicability) ------------
+    PROBE 6 visible          INADEQUATE      n of 9, needs at least 10
+    PROBE 6 conditional      INADEQUATE      n of 4, needs at least 10
+    PROBE 7 domain A         OK  0.81  n of 21  95% CI 0.60 to 0.92
+    PROBE 7 domain B         OK  1.00  n of 12  95% CI 0.76 to 1.00
+    PROBE 8 persona layer     NOT_APPLICABLE  n of 0
+    PROBE 9 table parity      INADEQUATE      n of 9, needs at least 10
+    PROBE 10 turn slots      OK  0.00  n of 210  95% CI 0.00 to 0.02
+
   PROBE 7  fallback (no route matched)   81.0% of questions fall back (4 real routes)
          +- second domain (ops/tech)       100.0% fall back (**0 real routes matched**)
          +- cross-domain verdict            router-coverage-is-domain-specific (+19.0pp)
@@ -99,6 +115,12 @@ So the repo ships a reproducible swap test (zero dependencies):
 - **PROBE 9** -> `demo.py` **hand-copies** a routing table and there is a second real one in
   `skills/ask/SKILL.md`. They agree today and nothing guarantees they will tomorrow -- which is
   why it is a **test**, not a comment.
+- **PROBE 6 conditional disagreement = 0%, but n of 4 -> INADEQUATE, not a result.**
+  A zero over four samples is compatible with a true rate near 50%, so it shows that I ran the
+  test four times, not that the router is stable. **A number that does not carry its own validity
+  is not a result, it is a gap wearing a number's clothing.** The power statement is declared at
+  issuance: each probe states the minimum population its number needs, and below that it reports
+  INADEQUATE instead of a value.
 - **PROBE 6 conditional disagreement = 0%** -> the router is **stable** under meaning-preserving
   rewording. The visible 22.2% was almost entirely my **fallback**: a rewording that misses a keyword
   drops into the default room instead of producing a different routing decision.
