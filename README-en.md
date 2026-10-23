@@ -20,6 +20,70 @@ Inspired by Disco Elysium's inner voice system 🎮 + BaZi astrology 🔮 + Trum
 
 ---
 
+## ⚡ 30 seconds
+
+**What it is**: a Claude Code plugin. You give it a topic and the ten voices in Trump's head take turns arguing by power level — the strong ones get two or three sentences, the weak ones mutter one line from the corner.
+
+**What you get**
+
+| Command | What it does |
+|---------|--------------|
+| `/trump:ask <topic>` | The brain room opens, 3-5 most relevant gods argue |
+| `/trump:daily` | Today's "executive order", generated from the live corpus |
+| `/trump:refresh` | Pull the latest Truth Social corpus and re-distill it into memory |
+| `/trump:<god> <question>` | Summon one god (10 personas + 4 commands = 14 skills) |
+
+**A real output** — the block below is the actual example from `skills/ask/SKILL.md`, not a mock-up:
+
+### 🎲 Cornering Trump's Brain
+
+```
+You > Give me a probability for Tuesday's power plant strike
+
+────── 🧠 Trump's Brain Room ──────
+
+【七杀·The Warlord·旺】 100%.
+
+【偏印·The Showman·旺】 I'd say 70%. Not because we don't WANT to bomb —
+    but keeping 30% mystery means ANOTHER headline cycle on Monday.
+    "WILL HE OR WON'T HE" is one episode. Tuesday bombing is another.
+    Two episodes beat one.
+
+【七杀·The Warlord·旺】 I said 100%.
+
+【偏印·The Showman·旺】 You ALWAYS say 100%.
+
+【食神·The Dealer·弱】 ...depends on whether they CALL. If Iran's new regime
+    calls Monday, drops to 40%. No call, 85%. Everything is a NEGOTIATION...
+
+【七杀·The Warlord·旺】 Even if they call, I'm bombing.
+
+【食神·The Dealer·弱】 ...then why am I even here.
+
+【劫财·The Winner】 Probability doesn't MATTER. Bomb — WIN. Don't bomb,
+    force concessions — also WIN. WINNERS don't calculate odds.
+    WINNERS calculate how to WIN.
+
+【正财·The Accountant·barely audible】 ...(pushes glasses) based on historical
+    data... North Korea he didn't, Syria he did, Soleimani he did...
+    sample size too small... (voice fading) ...roughly... 55%±20%...
+
+【七杀·The Warlord·旺】 55%? You INSULT me.
+
+> Narrator: Warlord says 100%. Showman says 70% for the suspense.
+> Dealer says 40-85% depending on a phone call. Winner says probability
+> is a stupid question. Accountant trembles out 55%±20% and gets stared down.
+> If you're betting on Polymarket, listen to the Accountant.
+> If you're buying oil, watch whether Warlord or Showman wins.
+> If you just want to survive Tuesday, pray the Dealer's phone call comes.
+```
+
+**Not using Claude Code?** Everything under `skills/` is a standard `SKILL.md` — plain markdown with frontmatter — so any agent can read it straight into context as a persona set.
+
+Sibling project: [shishen-skill](https://github.com/peggy-daddy/shishen-skill) — the general BaZi ten-gods persona system, not limited to Trump.
+
+---
+
 ## 📦 Install
 
 ```bash
@@ -108,49 +172,6 @@ You > What if Barron married Kim Jong Un's daughter?
 > Narrator:
 > Trump-Kim Dynasty: the only obstacle isn't the international community.
 > It's the voice inside Trump's own head that wants to bomb everything.
-```
-
-### 🎲 Cornering Trump's Brain
-
-```
-You > Give me a probability for Tuesday's power plant strike
-
-────── 🧠 Trump's Brain Room ──────
-
-【七杀·The Warlord·旺】 100%.
-
-【偏印·The Showman·旺】 I'd say 70%. Not because we don't WANT to bomb —
-    but keeping 30% mystery means ANOTHER headline cycle on Monday.
-    "WILL HE OR WON'T HE" is one episode. Tuesday bombing is another.
-    Two episodes beat one.
-
-【七杀·The Warlord·旺】 I said 100%.
-
-【偏印·The Showman·旺】 You ALWAYS say 100%.
-
-【食神·The Dealer·弱】 ...depends on whether they CALL. If Iran's new regime
-    calls Monday, drops to 40%. No call, 85%. Everything is a NEGOTIATION...
-
-【七杀·The Warlord·旺】 Even if they call, I'm bombing.
-
-【食神·The Dealer·弱】 ...then why am I even here.
-
-【劫财·The Winner】 Probability doesn't MATTER. Bomb — WIN. Don't bomb,
-    force concessions — also WIN. WINNERS don't calculate odds.
-    WINNERS calculate how to WIN.
-
-【正财·The Accountant·barely audible】 ...(pushes glasses) based on historical
-    data... North Korea he didn't, Syria he did, Soleimani he did...
-    sample size too small... (voice fading) ...roughly... 55%±20%...
-
-【七杀·The Warlord·旺】 55%? You INSULT me.
-
-> Narrator: Warlord says 100%. Showman says 70% for the suspense.
-> Dealer says 40-85% depending on a phone call. Winner says probability
-> is a stupid question. Accountant trembles out 55%±20% and gets stared down.
-> If you're betting on Polymarket, listen to the Accountant.
-> If you're buying oil, watch whether Warlord or Showman wins.
-> If you just want to survive Tuesday, pray the Dealer's phone call comes.
 ```
 
 ### 🐣 Easter Sunday 8AM F-Bomb
