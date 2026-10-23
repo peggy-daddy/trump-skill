@@ -24,6 +24,40 @@ Inspired by Disco Elysium's inner voice system 🎮 + BaZi astrology 🔮 + Trum
 
 **What it is**: a Claude Code plugin. You give it a topic and the ten voices in Trump's head take turns arguing by power level — the strong ones get two or three sentences, the weak ones mutter one line from the corner.
 
+### 👉 Run this first (installs nothing)
+
+```bash
+git clone https://github.com/peggy-daddy/trump-skill.git
+cd trump-skill
+python3 demo.py "the trade deal on tariffs"
+```
+
+Zero dependencies, Python 3 standard library only. It prints **who speaks, how loudly, in what order** — that part is deterministic:
+
+```
+────── 🧠 Trump Brain Panel ──────
+【话题】the trade deal on tariffs
+【路由】动态语料 topic-memory.json → tariffs-trade（命中 4 个关键词）
+
+【劫财·The Winner·中】好胜心爆表，一切都是零和游戏，赢赢赢
+    （正常发言（1-2 句））
+【食神·The Dealer·弱】谈判大师，Art of the Deal，凡事讲条件讲杠杆
+    （声音小，在角落嘀咕，简短（1 句））
+【偏财·The Mogul·弱】地产大亨，品牌帝国，金色一切，Trump Tower, Mar-a-Lago
+    （声音小，在角落嘀咕，简短（1 句））
+```
+
+The lines themselves are model-generated (you need the plugin for those). But **"who opens their mouth" was always deterministic** — and that is the only part of this toy worth stealing.
+
+Other modes: `python3 demo.py --roster` for the ten-god roster, `python3 demo.py "TikTok ban"` for other routings.
+
+### Install as a plugin
+
+```bash
+/plugin marketplace add peggy-daddy/trump-skill
+/plugin install trump@trump-skill
+```
+
 **What you get**
 
 | Command | What it does |

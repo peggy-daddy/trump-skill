@@ -25,6 +25,40 @@
 
 **它是什么**：一个 Claude Code 插件。你丢一个话题进去，特朗普脑内的十神按力量大小依次开口——旺的连说两三句，弱的只在角落嘀咕一句。
 
+### 👉 先跑这个（不用装任何东西）
+
+```bash
+git clone https://github.com/peggy-daddy/trump-skill.git
+cd trump-skill
+python3 demo.py "对伊朗动武的概率"
+```
+
+零依赖，只用 Python 3 标准库。它打印出**谁会发言、多大声、什么顺序**——这一步是确定性的：
+
+```
+────── 🧠 特朗普脑内会议室 ──────
+【话题】对伊朗动武的概率
+【路由】静态路由表 → 军事/安全/战争（命中 2 个关键词）
+
+【七杀·The Warlord·旺】军事鹰派，fire and fury，极限施压，最后通牒
+    （声音洪亮自信，长发言（2-3 句），像在集会演讲）
+【劫财·The Winner·中】好胜心爆表，一切都是零和游戏，赢赢赢
+    （正常发言（1-2 句））
+【正官·The POTUS·中】总统身份，行政命令，国家权力，Air Force One
+    （正常发言（1-2 句））
+```
+
+台词是模型生成的（要装插件才能看到，见下）。但**"谁开口"这一步本来就是确定的**——这也是这个玩具唯一值得偷的部分。
+
+其他用法：`python3 demo.py --roster` 看十神名册，`python3 demo.py "关税谈判"` 看别的路由。
+
+### 装成插件
+
+```bash
+/plugin marketplace add peggy-daddy/trump-skill
+/plugin install trump@trump-skill
+```
+
 **你会拿到什么**
 
 | 命令 | 干什么 |

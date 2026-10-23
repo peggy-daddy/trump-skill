@@ -1,0 +1,26 @@
+name: demo
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run the zero-dependency demo
+        run: |
+          echo "### 十神名册" >> "$GITHUB_STEP_SUMMARY"
+          python3 demo.py --roster >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          for t in "对伊朗动武的概率" "TikTok 禁令怎么办" "关税谈判"; do
+            echo "### 话题：$t" >> "$GITHUB_STEP_SUMMARY"
+            python3 demo.py "$t" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Show routing as job log
+        run: |
+          python3 demo.py --roster
+          python3 demo.py "关税谈判"
