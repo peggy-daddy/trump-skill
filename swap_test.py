@@ -189,10 +189,12 @@ def report(topics, as_json=False):
     # **这个 0% 测的是探针自己的盲区，不是 artifact 的人格层。**
     p8_changed = 0
     p8_sig = 0.0
-    persona_dir = os.path.join(ROOT, "skills")
-    if os.path.isdir(persona_dir):
+    # 两种布局都支持：插件版 skills/<key>/SKILL.md ；registry 版 personas/<key>.md
+    skill_dirs = os.path.join(ROOT, "skills")
+    flat_personas = os.path.join(ROOT, "personas")
+    if os.path.isdir(skill_dirs):
         with tempfile.TemporaryDirectory() as td:
-            shutil.copytree(persona_dir, os.path.join(td, "skills"))
+            shutil.copytree(skill_dirs, os.path.join(td, "skills"))
             for dp, dn, fn in os.walk(os.path.join(td, "skills")):
                 for f in fn:
                     if f == "SKILL.md":
@@ -202,16 +204,30 @@ def report(topics, as_json=False):
                         p8_changed += 1
             p8 = run_all(topics, profile, topic_memory)
             p8_sig = sig_change_rate(base, p8)
+    elif os.path.isdir(flat_personas):
+        with tempfile.TemporaryDirectory() as td:
+            shutil.copytree(flat_personas, os.path.join(td, "personas"))
+            for dp, dn, fn in os.walk(os.path.join(td, "personas")):
+                for f in fn:
+                    if f.endswith(".md"):
+                        open(os.path.join(dp, f), "w", encoding="utf-8").write("# neutralized\n")
+                        p8_changed += 1
+            p8 = run_all(topics, profile, topic_memory)
+            p8_sig = sig_change_rate(base, p8)
     # 其中有多少是「十神人格」目录下的（其余是 ask/correct/daily 等命令）
     PERSONA_KEYS = {k for k, _ in profile["tenGods"].items()}
     p8_persona = 0
     for k in PERSONA_KEYS:
         if os.path.exists(os.path.join(ROOT, "skills", k, "SKILL.md")):
             p8_persona += 1
+        elif os.path.exists(os.path.join(ROOT, "personas", k + ".md")):
+            p8_persona += 1
 
     # ---- PROBE 9: routing table parity（demo 的手抄表 vs ask/SKILL.md 的真表） ----
     # demo.py 把路由表**手抄**了一份在 Python 里。两份可能漂移，且没人会发现。
     ask_md = os.path.join(ROOT, "skills", "ask", "SKILL.md")
+    if not os.path.exists(ask_md):
+        ask_md = os.path.join(ROOT, "SKILL.md")   # registry 扁平布局：路由表就在根 SKILL.md 里
     parity_diff = None
     parity_missing = []
     if os.path.exists(ask_md):
