@@ -1,0 +1,23 @@
+{
+  "name": "trump-skill",
+  "description": "Marketplace for the Trump Brain plugin — a BaZi Ten Gods personality panel for Claude Code (entertainment toy).",
+  "owner": {
+    "name": "peggy-daddy",
+    "url": "https://github.com/peggy-daddy"
+  },
+  "plugins": [
+    {
+      "name": "trump",
+      "source": "./.",
+      "description": "Ten fixed personas mapped from the BaZi Ten Gods, routed by topic type so the most relevant three to five argue it in a shared voice. Entertainment project, not a decision framework.",
+      "category": "productivity",
+      "tags": [
+        "persona",
+        "multi-agent",
+        "ba-zi",
+        "entertainment",
+        "claude-code"
+      ]
+    }
+  ]
+}

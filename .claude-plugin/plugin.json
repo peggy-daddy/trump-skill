@@ -1,7 +1,7 @@
 {
   "name": "trump",
-  "description": "🧠 Trump Brain — 欢迎来到特朗普的脑内世界。用八字十神映射他的10个人格面。",
-  "version": "0.2.5",
+  "description": "🧠 Trump Brain — BaZi Ten Gods personality panel for Claude Code. Ten fixed personas routed by topic type. Entertainment toy, not a decision framework.",
+  "version": "0.4.0",
   "author": {
     "name": "peggy-daddy"
   },

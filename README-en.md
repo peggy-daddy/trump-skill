@@ -122,6 +122,12 @@ read it as a simulation and you are over-reading it.
 /plugin install trump@trump-skill
 ```
 
+Or install it straight from the skill registry, without Claude Code:
+
+```bash
+clawhub install trump-brain-room
+```
+
 **What you get**
 
 | Command | What it does |
