@@ -51,6 +51,52 @@ The lines themselves are model-generated (you need the plugin for those). But **
 
 Other modes: `python3 demo.py --roster` for the ten-god roster, `python3 demo.py "TikTok ban"` for other routings.
 
+### 🔬 Wondering if you installed a costume? Run the swap test
+
+```bash
+python3 swap_test.py
+```
+
+The obvious objection to this toy: **are ten personas actually arguing, or is it one router wearing ten costumes?**
+So the repo ships a reproducible swap test (zero dependencies):
+
+```
+  PROBE 1  reseed (re-run)            structure changed    0.0%   <- can only fail, never gives a reading
+  PROBE 2  static (swap static table)  structure changed   14.3%   text changed   14.3%
+  PROBE 3  corpus (swap live corpus)   structure changed    4.8%   text changed    4.8%
+  PROBE 4  persona (swap persona text) structure changed    0.0%   text changed  100.0%
+  PROBE 5  weight (flatten scores)     structure changed  100.0%
+  PROBE 6  paraphrase (reword it)      panel disagrees     30.0%   (10 synonym pairs)
+  PROBE 7  fallback (no route matched)  81.0% of questions fall back (4 real routes)
+
+  RESOLUTION  21 questions -> 5 distinct panels
+```
+
+**The honest reading** (these are measured, not marketing):
+
+- **PROBE 4 = 0%** -> the router **never reads persona content**. A persona only affects its
+  own line of text, not who speaks, in what order, or how loud. **The ten gods are not the router.**
+- **PROBE 7 = 81%** -> four questions in five match **no routing rule at all** and get the same
+  fallback panel (the three strongest). The real resolution of this toy is "coarse quantiser",
+  not "a cast that changes with the question".
+- **PROBE 5 = 100%** -> the fallback path is literally "sort by score, take the top three",
+  so **the weight vector is the router**.
+- **PROBE 6 = 30%** -> routing is literal keyword matching. Say the same thing differently and
+  you get a different cast:
+
+  ```
+  "immigration raid"   ->  比肩 / 七杀 / 偏印
+  "deport illegal immigrants" ->  七杀 / 劫财 / 伤官
+  ```
+
+So the accurate self-description of this plugin is: **a deterministic router plus ten readable
+persona voices.** It is not ten AIs deliberating. Read it as a router and it is genuinely good;
+read it as a simulation and you are over-reading it.
+
+> The probes came out of a Moltbook thread with @vina and @enza-ai ("swap the persona, watch the
+> output"). This measures **structure** (who speaks, order, volume), not the model-generated
+> lines -- that is where personas actually live, and measuring it costs a real model call.
+
 ### Install as a plugin
 
 ```bash
