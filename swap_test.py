@@ -41,6 +41,7 @@ import re
 import shutil
 import sys
 import tempfile
+import unicodedata
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
@@ -143,6 +144,35 @@ def run_all(topics, profile, topic_memory):
     return [panel(t, profile, topic_memory) for t in topics]
 
 
+# =====================================================================
+# 零假设（null control）
+# @vina: "a swap test that reports 'structure change' without a null is itself
+# the kind of vibe the post warns against."
+# → 没有校准过的零假设，0% 就分不清是「这一层不要紧」还是「我的探测器太灵」。
+# → 零扰动 = **语义保持**的重编码：它走**完全相同**的扰动管线，
+#   但按任何合理路由的标准都不可能改变结果。
+# → 若零扰动本身报出变化率 > 0，**探测器的假阳性率就是那个数**，
+#   表里每一个读数都要按它上浮，并如实标注。
+# =====================================================================
+def encode_null_whitespace(topic):
+    """零扰动 A：只折叠空白与首尾空格。对**任何**路由器都语义保持。
+    这是用来校准探测器的那个零 —— 它必须、且只必须，是 0%。"""
+    t = unicodedata.normalize("NFKC", topic)
+    return " ".join(t.split())
+
+
+def encode_null_surface(topic):
+    """零扰动 B：大小写翻转 + NFKC 规范化。语义保持，但**表层**变了。
+    它不是用来校准的，是用来回答「路由对表层敏感吗」的。"""
+    t = unicodedata.normalize("NFKC", topic)
+    t = " ".join(t.split())
+    if sum(1 for c in t if c.isupper()) * 2 < len(t):
+        t = t.upper()
+    else:
+        t = t.lower()
+    return t
+
+
 def sig_change_rate(base, other):
     """结构（谁发言/什么顺序/多大声）变了的话题占比。"""
     if not base:
@@ -184,6 +214,28 @@ def report(topics, as_json=False):
     # 它的作用是"排除"，不是"测量"：它只能失败，不能给出正向读数。
     reseed = run_all(topics, profile, topic_memory)
     p1 = sig_change_rate(base, reseed)
+
+    # ---- PROBE 0: 零假设（null control）—— 校准探测器本身 ----
+    null_a_topics = [encode_null_whitespace(t) for t in topics]
+    null_a = run_all(null_a_topics, profile, topic_memory)
+    p0 = sig_change_rate(base, null_a)
+    null_b_topics = [encode_null_surface(t) for t in topics]
+    null_b = run_all(null_b_topics, profile, topic_memory)
+    p0b = sig_change_rate(base, null_b)
+    # 探测器的假阳性率下界 = 零扰动 A 的变化率（它按定义必须为 0）
+    detector_fp = p0
+    if p0 > 0:
+        print("  ⚠️⚠️ 探测器假阳性：零扰动本身报出 %.1f%% 变化 —— 表中所有读数都至少上浮这么多。" % (p0 * 100))
+
+    # ---- PROBE 0b: 同一路径的零扰动（identity swap）----
+    # 零扰动 A 校准的是**探测器**；这个校准的是**扰动路径本身**：
+    # 它把 PROBE 2 的那一行代码原样跑一遍，只是换进去的是**它自己的深拷贝**。
+    # 语义完全相同 → 期望 0%。若 > 0，PROBE 2 的 14.3% 里有一部分是路径噪声。
+    _orig_static = D.STATIC_ROUTING
+    D.STATIC_ROUTING = copy.deepcopy(_orig_static)
+    ident = run_all(topics, profile, topic_memory)
+    D.STATIC_ROUTING = _orig_static
+    p0c = sig_change_rate(base, ident)
 
     # ---- PROBE 2: static routing swap（换掉已发布的静态路由表） ----
     remap = _remap_gods(profile)
@@ -481,6 +533,10 @@ def report(topics, as_json=False):
         "probe10_turn_influence_rate": round(p10, 4),
         "probe10_turn_influence_perturbations": p10_n,
         "probe10_panel_membership_change_rate": round(p10_disp_rate, 4),
+        "probe0_null_whitespace_change_rate": round(p0, 4),
+        "probe0_null_surface_change_rate": round(p0b, 4),
+        "detector_false_positive_floor": round(detector_fp, 4),
+        "probe0c_identity_swap_change_rate": round(p0c, 4),
         "real_routes_used": len(real_routes),
         "probe8_persona_layer_files_neutralized": p8_changed,
         "probe8_persona_layer_persona_files": p8_persona,
@@ -499,6 +555,9 @@ def report(topics, as_json=False):
     print("────── 🔬 Trump Brain Panel · 换人测试 ──────")
     print(f"话题数：{len(topics)}")
     print()
+    print("  PROBE 0  null（零扰动·校准）       结构变化率  %5.1f%%   ← 必须为 0%%；>0 即探测器假阳性率" % (p0 * 100))
+    print("         └ 零扰动B（大小写/规范化）   结构变化率  %5.1f%%   ← 路由对表层敏感吗" % (p0b * 100))
+    print("         └ 零扰动C（同一路径·恒等替换）结构变化率  %5.1f%%   ← 校准扰动路径本身" % (p0c * 100))
     print("  PROBE 1  reseed（重跑）            结构变化率  %5.1f%%   ← 只能失败，不能给正向读数" % (p1 * 100))
     print("  PROBE 2  static（换静态路由表）    结构变化率  %5.1f%%   文本变化率  %5.1f%%" % (p2_sig * 100, p2_line * 100))
     print("  PROBE 3  corpus（换动态语料）      结构变化率  %5.1f%%   文本变化率  %5.1f%%" % (p3_sig * 100, p3_line * 100))
@@ -550,6 +609,12 @@ def report(topics, as_json=False):
     print("     @Kleinbot 的干预测试在这里**没有可执行的位置** —— 没有第三回合可以植入命题。")
     print("   · 三态结果  →  INADEQUATE 不是失败，是「这个群体撑不住这个结论」。")
     print("     效力声明写在**发行时**：观测数不够的探针不许出数字。")
+    print("   · PROBE 0  →  **零扰动必须为 0%%**。它是用来校准探测器的：")
+    print("     零扰动走的是**完全相同**的扰动管线，只是输入是语义保持的重编码。")
+    print("     若它报出变化率 > 0，那这个数就是**探测器的假阳性率**，表里每个读数都要按它上浮。")
+    print("     零扰动 C 走的是**和 PROBE 2 完全相同的一行代码**，只是换进去的是它自己的深拷贝 ——")
+    print("     它校准的是**扰动路径**，零扰动 A/B 校准的是**探测器**。两个零都要是 0。")
+    print("     没有这个零，0%% 分不清是「这一层不要紧」还是「我的探测器太灵」。")
     print("   · PROBE 6 高  →  路由靠字面关键词，换个说法就换一群人。")
     print("     **但先看前提数字**：如果大部分对落在兜底，「不一致」可能只是同一个兜底房间。")
     print("     报告这个数字时，**前提数字必须和结果数字一起给**，否则条件会静默变成无条件。")

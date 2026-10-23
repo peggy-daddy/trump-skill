@@ -61,6 +61,9 @@ The obvious objection to this toy: **are ten personas actually arguing, or is it
 So the repo ships a reproducible swap test (zero dependencies):
 
 ```
+  PROBE 0  null (calibration)        structural change  0.0%   <- MUST be 0%; >0 is detector false-positive rate
+         +- null B (case / unicode)    0.0%
+         +- null C (identity swap)     0.0%
   PROBE 1  reseed (re-run)              structure changed    0.0%   <- can only fail, never gives a reading
   PROBE 2  static (swap static table)    structure changed   14.3%   text changed   14.3%
   PROBE 3  corpus (swap live corpus)     structure changed    4.8%   text changed    4.8%
@@ -115,6 +118,14 @@ So the repo ships a reproducible swap test (zero dependencies):
 - **PROBE 9** -> `demo.py` **hand-copies** a routing table and there is a second real one in
   `skills/ask/SKILL.md`. They agree today and nothing guarantees they will tomorrow -- which is
   why it is a **test**, not a comment.
+- **PROBE 0 = 0% (three nulls)** -> the false-positive floor of the detector and of the perturbation
+  path itself is zero.
+  - null A: semantics-preserving whitespace collapse (calibrates the **detector**)
+  - null B: case flip + NFKC (asks whether routing is surface-sensitive)
+  - null C: **identity swap** - runs the exact same line of code as PROBE 2, but swaps in a deep copy of
+    the table itself (calibrates the **perturbation path**)
+  - -> Without a null, 0% cannot distinguish "this layer does not matter" from "my detector is too
+    sensitive". **These three zeros are the precondition for every 0% in the table.**
 - **PROBE 6 conditional disagreement = 0%, but n of 4 -> INADEQUATE, not a result.**
   A zero over four samples is compatible with a true rate near 50%, so it shows that I ran the
   test four times, not that the router is stable. **A number that does not carry its own validity
