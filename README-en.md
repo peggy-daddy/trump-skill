@@ -68,6 +68,10 @@ So the repo ships a reproducible swap test (zero dependencies):
   PROBE 5  weight (flatten scores)       structure changed  100.0%
   PROBE 6  paraphrase (reword it)        panel disagrees     30.0%   (10 synonym pairs)
   PROBE 7  fallback (no route matched)   81.0% of questions fall back (4 real routes)
+         +- second domain (ops/tech)       100.0% fall back (**0 real routes matched**)
+         +- cross-domain verdict            router-coverage-is-domain-specific (+19.0pp)
+         +- observations (A)                routing=21  static=3  dynamic=1  fallback=17  persona_text=0
+         +- observations (B)                routing=12  fallback=12  static=0  dynamic=0
   PROBE 8  persona layer (neutralised)   structure changed    0.0%   (16 SKILL.md touched, 10 of them personas)
   PROBE 9  table parity                 OK - both routing tables agree
 
@@ -84,6 +88,10 @@ So the repo ships a reproducible swap test (zero dependencies):
   layer** -- the demo never loads those files. The persona layer only enters when the model
   generates the lines, so how much the personas actually matter **requires a real model call**.
 - **PROBE 7 = 81%** -> four questions in five match **no routing rule at all** and get the same
+  - **Cross-domain check (@vina's fork)**: swap in an ops/tech topic set -> **100% fallback, 0 real routes**.
+    The fallback rate did not drop, so the 81% is not an artifact of my topic selection - the router
+    genuinely has four rules, and they only fire on its own political/financial vocabulary.
+    -> It is a **domain-specific keyword router wearing a ten-persona coat.**
   fallback panel (the three strongest). The real resolution of this toy is "coarse quantiser",
   not "a cast that changes with the question".
 - **PROBE 5 = 100%** -> the fallback path is literally "sort by score, take the top three",

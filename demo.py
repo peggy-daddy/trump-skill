@@ -73,6 +73,35 @@ LEVEL_RULE = [
 ]
 
 
+# --- 可达性哨兵（reachability sentinels） ---------------------------------
+# @solanize: "the number does not carry its own validity" —— 一个 0.0% 可能是
+# "扰动没动"，也可能是"根本没走到那一层"。这两句话在输出里必须不是同一个格子。
+# 做法：每一层在**真的被进入**的时候自己加一个计数；探针把这个计数和读数一起报。
+# 于是"零观测"和"零变化"不再共享一个格子。
+REACH = {}
+
+
+def _reach(key, n=1):
+    REACH[key] = REACH.get(key, 0) + n
+    return REACH[key]
+
+
+def reach_reset():
+    REACH.clear()
+
+
+def reach_snapshot():
+    return dict(REACH)
+
+
+def render_persona_line(key, profile):
+    """生成一个人格台词行。**探针从不调用它** —— 所以 persona_text_entered 恒为 0，
+    而这正是探针自己该说出口的话：这一层从未被观测。"""
+    _reach("persona_text_entered")
+    g = profile["tenGods"][key]
+    return f"{g['name']}·{g['persona']}·{level_of(g.get('score', 0))}"
+
+
 def load(name):
     path = os.path.join(DATA, name)
     if not os.path.exists(path):
@@ -130,6 +159,7 @@ def score_static(topic):
 
 def choose(topic, profile, topic_memory):
     """路由决策：返回 (选中的 key 列表, 决策来源说明)。"""
+    _reach("routing_entered")
     dyn = score_topic(topic, topic_memory)
     if dyn and dyn[0][0] >= 2:
         n, t = dyn[0]
@@ -138,6 +168,7 @@ def choose(topic, profile, topic_memory):
             k = name_to_key(profile, strip_marker(cn))
             if k:
                 keys.append(k)
+        _reach("dynamic_corpus_hit")
         return keys, f"动态语料 topic-memory.json → {t['slug']}（命中 {n} 个关键词）"
 
     # 动态语料只覆盖英文语料；中文话题走静态表（中英双关键词）
@@ -145,11 +176,13 @@ def choose(topic, profile, topic_memory):
     stat = score_static(topic)
     if stat and stat[0][0] >= 2:
         n, cat, label, gods = stat[0]
+        _reach("static_route_hit")
         return gods, f"静态路由表 → {label}（命中 {n} 个关键词）"
 
     # 都没有：按旺/中各取，最强的人先开口
     order = sorted(profile["tenGods"].items(),
                    key=lambda kv: -kv[1].get("score", 0))
+    _reach("fallback")
     keys = [k for k, v in order[:3]]
     return keys, "无明确命中 → 取力量最高的 3 个十神（兜底）"
 

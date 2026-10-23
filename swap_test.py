@@ -48,6 +48,19 @@ DATA = os.path.join(ROOT, "data")
 sys.path.insert(0, ROOT)
 import demo as D  # 复用 demo.py 的路由逻辑，保证测的是同一套代码
 
+# 第二个话题集：来自**不同领域**（运维/技术/工程），静态路由表的关键词没理由命中。
+# @vina: "run the probes on a second topic set drawn from a different domain.
+#         If the 81% holds, the router has three rules, not ten.
+#         If it drops, your test set was the bottleneck, not the routing layer."
+# 第一组话题是我挑的 → 兜底率测的是**我的兴趣分布**，不是路由覆盖率。这是同一个坑：
+# 手写的夹具变成了未检验的前提。
+DOMAIN_B_TOPICS = [
+    "kubernetes pod restart loop", "database migration rollback", "TLS certificate expiry",
+    "CI pipeline flaky test", "redis connection pool exhausted", "灰度发布回滚",
+    "磁盘配额清理", "服务网格超时", "log rotation 配置", "数据库连接池耗尽",
+    "灰度发布", "磁盘写满",
+]
+
 DEFAULT_TOPICS = [
     "对伊朗动武", "the trade deal", "关税谈判", "中途选举", "假新闻",
     "移民遣返", "房地产帝国", "半导体禁令", "家族传承", "defense budget",
@@ -103,7 +116,15 @@ def report(topics, as_json=False):
     profile = load("trump-profile.json")
     topic_memory = load("topic-memory.json")
 
+    # 可达性哨兵：跑之前清零，跑之后读计数。
+    # 于是「零观测」和「零变化」在输出里是两个格子，不是一句话。
+    D.reach_reset()
     base = run_all(topics, profile, topic_memory)
+    base_reach = D.reach_snapshot()
+    # 第二个话题集（不同领域）—— @vina 的分叉检验
+    D.reach_reset()
+    base_b = run_all(DOMAIN_B_TOPICS, profile, topic_memory)
+    base_b_reach = D.reach_snapshot()
 
     # ---- PROBE 1: reseed（确定性） ----
     # 这个面板没有随机源，所以这一项必然是 0。
@@ -215,6 +236,33 @@ def report(topics, as_json=False):
     p7 = (fb / len(base)) if base else 0.0
     real_routes = {b["reason"].split("（")[0] for b in base
                    if not b["reason"].startswith("无明确命中")}
+    # 第二领域：同样的测量，换一批话题
+    fb_b = sum(1 for b in base_b if b["reason"].startswith("无明确命中"))
+    p7_b = (fb_b / len(base_b)) if base_b else 0.0
+    real_routes_b = {b["reason"].split("（")[0] for b in base_b
+                     if not b["reason"].startswith("无明确命中")}
+    # 分叉判定（@vina）：兜底率在两个领域都高 → 路由真的只有少数几条规则；
+    # 只在第一组高 → 是我的话题集选窄了，不是路由覆盖不足。
+    p7_gap = p7_b - p7          # 有符号：新领域的兜底率 - 原领域的
+    # 判定要看**方向**，不是绝对差：
+    #   · 换领域后兜底率**下降** → 我原来那批话题是偏向的（挑得让它显得覆盖更好）→ 我的测试集是瓶颈
+    #   · 兜底率**持平或上升** → 兜底不是话题集挑出来的，路由本来就薄（而且只在一个领域的词汇上薄）
+    if p7_b < p7 - 0.05:
+        p7_verdict = "test-set-was-the-bottleneck"
+    else:
+        p7_verdict = "router-coverage-is-domain-specific"
+    # 可达性观测数
+    obs = {
+        "routing_entered": base_reach.get("routing_entered", 0),
+        "dynamic_corpus_hit": base_reach.get("dynamic_corpus_hit", 0),
+        "static_route_hit": base_reach.get("static_route_hit", 0),
+        "fallback": base_reach.get("fallback", 0),
+        "persona_text_entered": base_reach.get("persona_text_entered", 0),
+        "domainB_routing_entered": base_b_reach.get("routing_entered", 0),
+        "domainB_fallback": base_b_reach.get("fallback", 0),
+        "domainB_static_route_hit": base_b_reach.get("static_route_hit", 0),
+        "domainB_dynamic_corpus_hit": base_b_reach.get("dynamic_corpus_hit", 0),
+    }
 
     # ---- PROBE 8: persona layer perturbation（中性化 10 个 persona SKILL.md） ----
     # 人格内容在 skills/<key>/SKILL.md。这个探针**真的把文件改了**（写到临时目录），
@@ -309,6 +357,10 @@ def report(topics, as_json=False):
         "probe6_positive_control_changed": p6_pos_ok,
         "probe6_positive_control_detail": p6_pos_results,
         "probe7_fallback_rate": round(p7, 3),
+        "probe7_fallback_rate_domain_b": round(p7_b, 3),
+        "probe7_cross_domain_verdict": p7_verdict,
+        "probe7_real_routes_domain_b": len(real_routes_b),
+        "observations": obs,
         "real_routes_used": len(real_routes),
         "probe8_persona_layer_files_neutralized": p8_changed,
         "probe8_persona_layer_persona_files": p8_persona,
@@ -338,6 +390,13 @@ def report(topics, as_json=False):
     print("         └ 兜底占比（至少一边）    %5.1f%%   ← 兜底对会让「不一致」看起来像「脆弱」" % (p6_fallback_rate * 100))
     print("         └ 阳性对照（增义改写应换人）%s" % ("n/a" if p6_pos_ok is None else ("✅ 全部换人" if p6_pos_ok else "❌ 有增义改写没换人")))
     print("  PROBE 7  fallback（没命中路由）    %5.1f%% 的问题落到兜底（%d 条真实路由规则）" % (p7 * 100, len(real_routes)))
+    print("         └ 第二领域（运维/技术）     %5.1f%% 的问题落到兜底（%d 条真实路由规则）" % (p7_b * 100, len(real_routes_b)))
+    print("         └ 跨领域判定              %s  （新领域 %+.1f 个百分点）" % (p7_verdict, p7_gap * 100))
+    print("         └ 观测数(A)              routing=%d  static=%d  dynamic=%d  fallback=%d  persona_text=%d"
+          % (obs["routing_entered"], obs["static_route_hit"], obs["dynamic_corpus_hit"], obs["fallback"], obs["persona_text_entered"]))
+    print("         └ 观测数(B)              routing=%d  fallback=%d  static=%d  dynamic=%d"
+          % (obs["domainB_routing_entered"], obs["domainB_fallback"],
+             obs["domainB_static_route_hit"], obs["domainB_dynamic_corpus_hit"]))
     print("  PROBE 8  persona layer（中性化）   结构变化率  %5.1f%%   （改了 %d 个 SKILL.md，其中 %d 个是十神人格）" % (p8_sig * 100, p8_changed, p8_persona))
     if parity_diff is None:
         print("  PROBE 9  table parity             跳过（找不到 skills/ask/SKILL.md）")
@@ -355,6 +414,10 @@ def report(topics, as_json=False):
     print("     **这 0% 测的是探针自己的盲区，不是 artifact 的人格层** —— demo 从不加载那些文件。")
     print("     人格层只在模型生成台词时进入，所以人格的影响**必须调一次模型才能测**。")
     print("   · PROBE 7 高  →  大部分问题根本没命中路由规则，拿到的是同一个兜底面板。")
+    print("     跨领域判定 %s：%s" % (p7_verdict,
+          "兜底率在第二个领域**没有下降** → 兜底不是话题集挑出来的；**路由本来就薄，"
+          "而且只在它自己那套词汇上不薄**。十神层大部分是装饰。" if p7_verdict == "router-coverage-is-domain-specific"
+          else "换个领域兜底率就掉 → **是我原来那批话题挑得让它显得覆盖更好**，测试集是瓶颈。"))
     print("   · PROBE 5 = 100%  →  兜底路径就是「按力量取前三」，**权重向量就是路由器**。")
     print("   · PROBE 9  →  demo.py 里手抄了一份路由表；今天两份一致，但没有东西保证明天还一致。")
     print("   · PROBE 6 高  →  路由靠字面关键词，换个说法就换一群人。")
@@ -362,6 +425,11 @@ def report(topics, as_json=False):
     print("     报告这个数字时，**前提数字必须和结果数字一起给**，否则条件会静默变成无条件。")
     print("   · RESOLUTION  →  面板是 N 个问题上的一个粗量化器。")
     print()
+    if obs["persona_text_entered"] == 0:
+        print("  ⚠️⚠️ LOUD FAIL：persona/text 层 **观测数 = 0** —— 这一层从未被进入。")
+        print("       下面任何关于「人格层」的 0.0% **不是结果**，是**零观测**。")
+        print("       （@solanize：0 观测和 0 变化不能再共用同一个格子。）")
+        print()
     print("  ⚠️ LIMITATION（这段是仪器的边界，不是免责声明）：")
     print("     这个脚本测的全部是**结构层**：谁发言、什么顺序、多大声。")
     print("     它**没有**测人格内容对台词的影响，因为那需要真的调一次模型。")
