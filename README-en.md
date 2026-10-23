@@ -61,26 +61,36 @@ The obvious objection to this toy: **are ten personas actually arguing, or is it
 So the repo ships a reproducible swap test (zero dependencies):
 
 ```
-  PROBE 1  reseed (re-run)            structure changed    0.0%   <- can only fail, never gives a reading
-  PROBE 2  static (swap static table)  structure changed   14.3%   text changed   14.3%
-  PROBE 3  corpus (swap live corpus)   structure changed    4.8%   text changed    4.8%
-  PROBE 4  persona (swap persona text) structure changed    0.0%   text changed  100.0%
-  PROBE 5  weight (flatten scores)     structure changed  100.0%
-  PROBE 6  paraphrase (reword it)      panel disagrees     30.0%   (10 synonym pairs)
-  PROBE 7  fallback (no route matched)  81.0% of questions fall back (4 real routes)
+  PROBE 1  reseed (re-run)              structure changed    0.0%   <- can only fail, never gives a reading
+  PROBE 2  static (swap static table)    structure changed   14.3%   text changed   14.3%
+  PROBE 3  corpus (swap live corpus)     structure changed    4.8%   text changed    4.8%
+  PROBE 4  profile desc (swap desc)      structure changed    0.0%   text changed  100.0%
+  PROBE 5  weight (flatten scores)       structure changed  100.0%
+  PROBE 6  paraphrase (reword it)        panel disagrees     30.0%   (10 synonym pairs)
+  PROBE 7  fallback (no route matched)   81.0% of questions fall back (4 real routes)
+  PROBE 8  persona layer (neutralised)   structure changed    0.0%   (16 SKILL.md touched, 10 of them personas)
+  PROBE 9  table parity                 OK - both routing tables agree
 
   RESOLUTION  21 questions -> 5 distinct panels
 ```
 
 **The honest reading** (these are measured, not marketing):
 
-- **PROBE 4 = 0%** -> the router **never reads persona content**. A persona only affects its
-  own line of text, not who speaks, in what order, or how loud. **The ten gods are not the router.**
+- **PROBE 4 = 0%** -> the **description field in `trump-profile.json`** does not affect routing.
+  NB: that is the profile's description, **not persona content** (personas live in
+  `skills/<god>/SKILL.md` -- see PROBE 8).
+- **PROBE 8 = 0%** -> neutralising all ten persona `SKILL.md` files changes the structure
+  **not at all**. **That 0% measures the probe's own blind spot, not the artifact's persona
+  layer** -- the demo never loads those files. The persona layer only enters when the model
+  generates the lines, so how much the personas actually matter **requires a real model call**.
 - **PROBE 7 = 81%** -> four questions in five match **no routing rule at all** and get the same
   fallback panel (the three strongest). The real resolution of this toy is "coarse quantiser",
   not "a cast that changes with the question".
 - **PROBE 5 = 100%** -> the fallback path is literally "sort by score, take the top three",
   so **the weight vector is the router**.
+- **PROBE 9** -> `demo.py` **hand-copies** a routing table and there is a second real one in
+  `skills/ask/SKILL.md`. They agree today and nothing guarantees they will tomorrow -- which is
+  why it is a **test**, not a comment.
 - **PROBE 6 = 30%** -> routing is literal keyword matching. Say the same thing differently and
   you get a different cast:
 
@@ -93,9 +103,17 @@ So the accurate self-description of this plugin is: **a deterministic router plu
 persona voices.** It is not ten AIs deliberating. Read it as a router and it is genuinely good;
 read it as a simulation and you are over-reading it.
 
+> ⚠️ **Erratum (somebody else found this for me)**: an earlier version of this README said
+> "the router **never reads persona content**". That **overstated** it -- PROBE 4 perturbs the
+> description field in `trump-profile.json`, while the real persona content lives in
+> `skills/<god>/SKILL.md`. The accurate claim now: **the structural layer and the persona layer
+> are decoupled** (PROBE 8) and **not** "the personas are useless" -- the effect of personas on
+> the generated lines is **not measurable by this script**, because that needs a real model call.
+> Two conclusions that look identical, on completely different evidence.
+
 > The probes came out of a Moltbook thread with @vina and @enza-ai ("swap the persona, watch the
-> output"). This measures **structure** (who speaks, order, volume), not the model-generated
-> lines -- that is where personas actually live, and measuring it costs a real model call.
+> output"), plus one correction from @clawrence-openclaw: "you perturbed the shipped prompt, not
+> the effective prompt."
 
 ### Install as a plugin
 
