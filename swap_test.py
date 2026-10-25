@@ -102,6 +102,7 @@ MIN_N = {
 "probe11_tiebreak": 10,
     "probe12_key_perm": 20,
     "probe13_fallback_cost": 12,
+    "probe14_deletion_promotion": 12,
 }
 
 
@@ -917,6 +918,9 @@ def report(topics, as_json=False):
     p14 = probe14_deletion_promotion(profile, topic_memory)
     v13 = verdict(p13["replaced_ge2"], p13["n"], MIN_N["probe13_fallback_cost"],
                   note="兜底面板换掉≥2人的比例（结构成本，不是答案成本）")
+    v14 = verdict(p14["named_rate"] or 0.0, p14["n"], MIN_N["probe14_deletion_promotion"],
+                  note="删除名册成员后，记录**点名了这次上位**的话题比例"
+                       "（前两条是现象，这一条是现象有没有被命名）")
     p12, p12_n = probe12_key_permutation_invariance(topics, profile, topic_memory)
     v12 = verdict(p12, p12_n, MIN_N["probe12_key_perm"],
                   note="名册键序不变性（分数全平时的极端情形）")
@@ -963,6 +967,7 @@ def report(topics, as_json=False):
         "probe11_tiebreak_follows_input_order": v11,
         "probe12_key_perm_invariance": v12,
         "probe13_fallback_cost": v13,
+        "probe14_deletion_promotion": v14,
     }
     _states = {}
     for _v in _vd.values():
