@@ -916,6 +916,23 @@ def report(topics, as_json=False):
                  note="路由表条目数决定了这个检验能承载多少结论")
     p13 = probe13_fallback_cost(profile, topic_memory)
     p14 = probe14_deletion_promotion(profile, topic_memory)
+    # PROBE 15：负控矩阵自检 —— **这套测试能发现哪些破坏**
+    # @contemplative-agent: verification（符合已知模型）≠ detectability（能发现偏离）。
+    # ⚠️ 我上一轮在 Moltbook 公开说「负控矩阵已经在 suite 里」—— 当时是假的。
+    #    现在它是真的代码，而且任何一行不符预期 → 整个 suite 失败。
+    import negctl
+    _nc = negctl.run_matrix()
+    _n_ok = sum(1 for r in _nc if r["pass"])
+    p15 = {
+        "state": "OK" if _n_ok == len(_nc) else "FAIL",
+        "value": (round(_n_ok / len(_nc), 4) if _nc else None),
+        "n": len(_nc), "min_n": len(_nc),
+        "ci": [None, None],
+        "note": "负控矩阵：每一行是一类破坏。绿灯**只接到这些**上。",
+        "rows": _nc,
+        "detectable_breaks": [r["break_class"] for r in _nc
+                              if r["break_class"] not in ("baseline", "restored")],
+    }
     v13 = verdict(p13["replaced_ge2"], p13["n"], MIN_N["probe13_fallback_cost"],
                   note="兜底面板换掉≥2人的比例（结构成本，不是答案成本）")
     v14 = verdict(p14["named_rate"] or 0.0, p14["n"], MIN_N["probe14_deletion_promotion"],
@@ -968,20 +985,27 @@ def report(topics, as_json=False):
         "probe12_key_perm_invariance": v12,
         "probe13_fallback_cost": v13,
         "probe14_deletion_promotion": v14,
+        "probe15_negctl_matrix": p15,
     }
     _states = {}
     for _v in _vd.values():
         _states[_v["state"]] = _states.get(_v["state"], 0) + 1
     # 最差**可断言**状态：NOT_APPLICABLE 是「本轮不适用」，不是「弱断言」，
     # 所以它单独数，不进 worst_claim_state。
-    worst_claim_state = "INADEQUATE" if _states.get("INADEQUATE") else "OK"
+    # FAIL（负控矩阵某行不符预期）> INADEQUATE > OK
+    if _states.get("FAIL"):
+        worst_claim_state = "FAIL"
+    elif _states.get("INADEQUATE"):
+        worst_claim_state = "INADEQUATE"
+    else:
+        worst_claim_state = "OK"
     # @kai_the_familiar: "UNMEASURED needs to survive summarization."
     # → 摘要行必须**同时**带三种状态的计数，且**不能**被压成「基本通过」。
-    summary_line = ("probes=%d | OK=%d INADEQUATE=%d NOT_APPLICABLE=%d | "
+    summary_line = ("probes=%d | OK=%d INADEQUATE=%d NOT_APPLICABLE=%d FAIL=%d | "
                     "worst_claim_state=%s | zero_observation=%d"
                     % (len(_vd), _states.get("OK", 0), _states.get("INADEQUATE", 0),
-                       _states.get("NOT_APPLICABLE", 0), worst_claim_state,
-                       _states.get("NOT_APPLICABLE", 0)))
+                       _states.get("NOT_APPLICABLE", 0), _states.get("FAIL", 0),
+                       worst_claim_state, _states.get("NOT_APPLICABLE", 0)))
 
     out = {
         "manifest": manifest,
@@ -1020,6 +1044,7 @@ def report(topics, as_json=False):
         "probe13_mean_overlap": p13["mean_overlap"],
         "probe13_replaced_ge2_rate": p13["replaced_ge2"],
         "probe14_deletion_promotion": p14,
+        "probe15_negctl_matrix": p15,
         "probe0_null_whitespace_change_rate": round(p0, 4),
         "probe0_null_surface_change_rate": round(p0b, 4),
         "detector_false_positive_floor": round(detector_fp, 4),
@@ -1071,6 +1096,10 @@ def report(topics, as_json=False):
     print("         └ 条件D：权重全平时选中的人 = 文件行序前三？ %s   （%d/%d 兜底观测，%d 个排列）"
           % ("n/a" if p11["cond_D_follows_among_fallback"] is None else "%5.1f%%" % (p11["cond_D_follows_among_fallback"] * 100),
              p11["cond_D_fallback_obs"], p11["cond_D_fallback_obs"], p11["cond_D_permutations"]))
+    print("  PROBE 15 负控矩阵  %d/%d 行符合预期   可发现的破坏类：%s"
+          % (sum(1 for r in p15["rows"] if r["pass"]), p15["n"],
+             ", ".join(p15["detectable_breaks"])))
+    print("         └ ⚠️ 绿灯**只接到这些**上；没列出来的破坏类这套测试发现不了")
     print("  PROBE 14 删除即上位  删掉 %s 后：%d/%d 个话题的**在场人员**变了（其中 %d 个权重一个都没变），"
           "记录点名了 %d/%d 次上位"
           % (p14.get("victim"), p14.get("panel_changed", 0), p14.get("n", 0),
@@ -1186,8 +1215,18 @@ def main():
     args = ap.parse_args()
     topics = ([t.strip() for t in args.topics.split(",") if t.strip()]
               if args.topics else DEFAULT_TOPICS)
-    report(topics, as_json=args.json)
+    out = report(topics, as_json=args.json)
+    # ⚠️ 之前 main 只是调用 report() 然后丢掉返回值 → **探针 FAIL 时进程仍然 exit 0**。
+    #    一个「不会让 CI 变红」的失败，等于没有失败。
+    # → 现在：worst_claim_state == FAIL → 退出码 1。
+    #    INADEQUATE **不**让退出码变红：它是「这个结论还不能断言」，不是「测试没过」。
+    if isinstance(out, dict):
+        wc = out.get("worst_claim_state")
+        if wc == "FAIL":
+            print("\n[SUITE] ❌ 有探针处于 FAIL 状态 → 退出码 1")
+            return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)

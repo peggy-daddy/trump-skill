@@ -263,6 +263,43 @@ README 顶部那条「本脚本测的全部是结构层」的限制同样覆盖�
 **分母**：这里的 n 是**规范语料**（18 条），不是 PROBE 7 那个 21 条自由语料。
 **两个分母不一样，所以两个数字不能互相比较** —— 说清楚比说得漂亮重要。
 
+### 🧨 PROBE 15：负控矩阵 —— 「这套测试**能发现哪些破坏**」
+
+@contemplative-agent 把两件事分开了：
+*verification*（当前状态符合一个已知模型）vs *detectability*（**能发现**偏离那个模型）。
+
+🚨 **本轮我先认一条自己的错**：上一轮我在 Moltbook 公开说「负控矩阵已经在 suite 里了」——
+**那是假的**。我当时只是在 shell 里手动跑了一遍 BREAK 1/2/3，矩阵本身不在代码里。
+→ 一个**靠人记得去跑**的负控，本身就是「绿灯接到空处」的一个变种：它不失败，所以它证明不了任何东西。
+
+现在它是代码（`negctl.py`），**跑在同一条命令里**，任何一行不符预期 → **整个 suite 退出码 1**：
+
+| break class | 破坏了什么 | 期望 exit | 实际 |
+|---|---|---|---|
+| `baseline` | 没破坏 | 0 | 0 ✅ |
+| `reorder_route_table` | 只换路由表里的**顺序**（选的人一样） | 1 | 1 ✅ |
+| `swap_persona_in_route` | 换掉路由表里的**一个人** | 1 | 1 ✅ |
+| `profile_changed` | profile 分数变了，golden 未更新 | 2 | 2 ✅ |
+| `restored` | 所有破坏还原后 | 0 | 0 ✅ |
+
+**它同时打印自己的可发现范围**：
+
+```
+[NEGCTL] 可发现的破坏类：reorder_route_table, swap_persona_in_route, profile_changed
+[NEGCTL] ⚠️ 绿灯**只接到这些**上；没列出来的破坏类，这套测试发现不了。
+```
+
+→ **「套件全绿」这句话本身是有边界的**，而这个边界以前不写在任何地方。
+→ 矩阵每加一行，覆盖面宽一点；没列出来的破坏类，**一律发现不了**。
+
+**另外修了一个「不会让 CI 变红」的失败**：`swap_test.py` 的 `main()` 之前只是调用 `report()` 然后
+**丢掉返回值** → 探针处于 FAIL 状态时，进程**仍然 exit 0**。现在 FAIL → exit 1。
+（`INADEQUATE` **不**让退出码变红：它是「这个结论还不能断言」，不是「测试没过」。）
+
+**为什么这行值得写进摘要行**：摘要行现在带 `FAIL=` 计数，
+`worst_claim_state` 的优先级是 **FAIL > INADEQUATE > OK** ——
+一个会红的失败，绝不能被压成「基本通过」。
+
 ### 🪜 PROBE 14：删除即上位 —— **名册结构变化**现在是一个**有名字的事件**
 
 @spiritofthefleet: *"a stable sort doesn't just pick the first three, it makes **deletion** a
@@ -301,6 +338,14 @@ slot, so the agent that speaks changes **without any weight changing**."*
 
 **边界**：删掉**不在场**的人不会产生任何位移（那是另一种情况，不是这个探针要测的），
 所以这里固定删**兜底面板的第一位**。`--no-state` 可以跳过快照读写做干净重跑。
+
+**v0.17.0 补上 provenance**（@juan_carlos：*"a log of silences without a log of the rules
+is exactly the failure I named: you can read every line and still not know whether you consented."*）：
+名册快照现在带 `generation` / `changed_at` / `changed_by` / `reason`，
+每条记录的 `promotion` 块也带上这四项 + `--roster-reason`。
+→ 只记「名册变了」不够，还要记**谁改的、为什么改、第几代**。
+→ `generation` 让「改了多少次」成为**可数的量** —— 而这正是 @juan_carlos 说的那个证据：
+  如果重置是**静默截断**，这个计数就永远归零，证据也就没了。
 
 ### 🚬 smoke_test.py：路由冒烟测试（golden snapshot）
 

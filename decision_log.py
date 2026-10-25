@@ -39,6 +39,7 @@ decision_log.py — 把路由决策变成**一等可检视的记录**。
 """
 
 import argparse
+import datetime
 import hashlib
 import json
 import os
@@ -280,10 +281,19 @@ def roster_diff(profile, prev_state):
                        if k in ow and ow.get(k) != cw.get(k)}
     if not removed and not added and not weights_changed:
         return None
+    try:
+        _gen = int(prev_state.get("generation", 0)) + 1
+    except Exception:
+        _gen = 1
     return {"removed": removed, "added": added,
             "old_weights": ow,
             "old_gods": prev_state.get("gods") or {},
             "old_roster": old,
+            "old_generation": prev_state.get("generation", 0),
+            "new_generation": _gen,
+            "changed_at": prev_state.get("changed_at"),
+            "changed_by": prev_state.get("changed_by"),
+            "reason": prev_state.get("reason"),
             "weights_changed": bool(weights_changed),
             "weights_delta": weights_changed}
 
@@ -339,6 +349,11 @@ def build_record(topic, profile, topic_memory, roster_order=None, roster_delta=N
             "roster_removed": roster_delta.get("removed", []),
             "roster_added": roster_delta.get("added", []),
             "weights_changed": roster_delta.get("weights_changed", False),
+            # provenance：名册变更是**谁**做的、**为什么**、第几代
+            "roster_generation": roster_delta.get("new_generation"),
+            "roster_changed_at": roster_delta.get("changed_at"),
+            "roster_changed_by": roster_delta.get("changed_by"),
+            "roster_reason": roster_delta.get("reason"),
             "panel_before": list(before),
             "panel_after": list(after),
             "entered": entered,
@@ -370,6 +385,8 @@ def main():
     ap.add_argument("--verify", default=None,
                     help="用独立实现重算并对已有记录做一致性检查")
     ap.add_argument("--seed", type=int, default=20261023)
+    ap.add_argument("--roster-reason", default="",
+                    help="这次名册变更的**理由**（会写进快照的 provenance）")
     ap.add_argument("--no-state", action="store_true",
                     help="不读也不写名册快照（用于干净重跑）")
     ap.add_argument("--flatten", action="store_true",
@@ -434,6 +451,11 @@ def main():
             prev_state = None
     delta = roster_diff(profile, prev_state)
     if delta:
+        # ⚠️ provenance 描述的是**这次**变更，不是上一次快照的元数据。
+        #   命令行给的 --roster-reason 说的就是「当前这一版名册为什么是这样」。
+        delta["reason"] = getattr(args, "roster_reason", "") or ""
+        delta["changed_by"] = "cli"
+        delta["changed_at"] = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
         print("[ROSTER] 名册发生变化： removed=%s added=%s weights_changed=%s"
               % (delta["removed"], delta["added"], delta["weights_changed"]))
         if delta["removed"]:
@@ -453,13 +475,29 @@ def main():
                 records.append(r)
 
     if not args.no_state:
+        # 快照带 **generation + provenance**。
+        # @juan_carlos: "a log of silences without a log of the rules is exactly the
+        # failure I named: you can read every line and still not know whether you consented."
+        # → 只记「名册变了」不够，还要记**谁改的、为什么改、第几代**。
+        # → generation 让「改了多少次」成为可数的量 —— 而**沉默的清零会毁掉这个证据**，
+        #   所以重置必须**是事件**，不是截断。
+        _gen = 1
+        if prev_state:
+            try:
+                _gen = int(prev_state.get("generation", 0)) + 1
+            except Exception:
+                _gen = 1
         with open(rs_path, "w", encoding="utf-8") as f:
             json.dump({"roster": list(profile["tenGods"].keys()),
                        "weights": {k: g.get("score", 0)
                                    for k, g in profile["tenGods"].items()},
                        # 快照存**完整**的 gods：重建旧名册需要旧人格本身，
                        # 只存权重的话，「旧状态」是造不出来的。
-                       "gods": profile["tenGods"]},
+                       "gods": profile["tenGods"],
+                       "generation": _gen,
+                       "changed_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+                       "changed_by": "cli",
+                       "reason": getattr(args, "roster_reason", "") or ""},
                       f, ensure_ascii=False, indent=2)
     with open(args.out, "w", encoding="utf-8") as f:
         for r in records:
