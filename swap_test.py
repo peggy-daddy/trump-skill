@@ -528,6 +528,66 @@ def probe12_key_permutation_invariance(topics, profile, topic_memory,
     return (changed / trials if trials else 0.0), trials
 
 
+def probe14_deletion_promotion(profile, topic_memory, topics=None):
+    """PROBE 14：删除即上位（deletion is a silent promotion）。
+
+    @spiritofthefleet: "a stable sort doesn't just pick the first three, it makes
+    *deletion* a silent promotion. When one candidate drops out of the set,
+    everyone behind it shifts up one slot, so the agent that speaks changes
+    without any weight changing."
+
+    量三件事：
+      1. 从名册里删掉一个人之后，多少话题的**在场人员**变了
+      2. 其中多少是**权重一个都没变**（所以变化只能归因于名册，不是力量）
+      3. 记录里**有没有写明**这次上位  ← 这是修复前后唯一变化的字段
+
+    第 3 条是这个探针存在的理由：前两条描述现象，第三条描述**现象有没有被命名**。
+    """
+    try:
+        import decision_log as DL
+    except Exception as e:      # pragma: no cover
+        return {"n": 0, "panel_changed": None, "zero_weight_change": None,
+                "named_by_record": None, "note": "decision_log 不可用: %s" % e}
+    topics = topics or list(DL.TOPICS)
+    gods = profile["tenGods"]
+    # 删掉**兜底面板的第一位** —— 删掉不在场的人不会产生任何位移，
+    # 那不是这个探针要测的（负控要破坏真正被覆盖的东西）。
+    fb = [k for k, _ in sorted(gods.items(),
+                               key=lambda kv: (-kv[1].get("score", 0),
+                                               kv[1].get("roster_rank", 999)))][:3]
+    victim = fb[0]
+    before_panels = {}
+    for t in topics:
+        before_panels[t] = set(D.choose(t, profile, topic_memory)[0])
+    # 删掉 victim
+    p2 = json.loads(json.dumps(profile))
+    del p2["tenGods"][victim]
+    after_panels = {}
+    for t in topics:
+        after_panels[t] = set(D.choose(t, p2, topic_memory)[0])
+    changed = [t for t in topics if before_panels[t] != after_panels[t]]
+    zero_weight = [t for t in changed
+                   if all(p2["tenGods"][k].get("score", 0) == gods[k].get("score", 0)
+                          for k in (before_panels[t] & after_panels[t]))]
+    # 记录有没有点名这次上位？
+    delta = {"removed": [victim], "added": [],
+             "old_weights": {k: g.get("score", 0) for k, g in gods.items()},
+             "old_gods": gods, "old_roster": list(gods.keys()),
+             "weights_changed": False, "weights_delta": {}}
+    named = 0
+    for t in changed:
+        rec = DL.build_record(t, p2, topic_memory, roster_delta=delta)
+        if (rec.get("promotion") or {}).get("entered"):
+            named += 1
+    return {"n": len(topics), "victim": victim,
+            "panel_changed": len(changed),
+            "panel_changed_rate": round(len(changed) / len(topics), 4) if topics else None,
+            "zero_weight_change": len(zero_weight),
+            "named_by_record": named,
+            "named_rate": round(named / len(changed), 4) if changed else None,
+            "note": "第 3 条（named_by_record）是修复前后唯一变化的字段"}
+
+
 def report(topics, as_json=False):
     profile = load("trump-profile.json")
     topic_memory = load("topic-memory.json")
@@ -854,6 +914,7 @@ def report(topics, as_json=False):
                  applicable=parity_diff is not None,
                  note="路由表条目数决定了这个检验能承载多少结论")
     p13 = probe13_fallback_cost(profile, topic_memory)
+    p14 = probe14_deletion_promotion(profile, topic_memory)
     v13 = verdict(p13["replaced_ge2"], p13["n"], MIN_N["probe13_fallback_cost"],
                   note="兜底面板换掉≥2人的比例（结构成本，不是答案成本）")
     p12, p12_n = probe12_key_permutation_invariance(topics, profile, topic_memory)
@@ -953,6 +1014,7 @@ def report(topics, as_json=False):
         "probe13_fallback_cost": p13,
         "probe13_mean_overlap": p13["mean_overlap"],
         "probe13_replaced_ge2_rate": p13["replaced_ge2"],
+        "probe14_deletion_promotion": p14,
         "probe0_null_whitespace_change_rate": round(p0, 4),
         "probe0_null_surface_change_rate": round(p0b, 4),
         "detector_false_positive_floor": round(detector_fp, 4),
@@ -1004,6 +1066,11 @@ def report(topics, as_json=False):
     print("         └ 条件D：权重全平时选中的人 = 文件行序前三？ %s   （%d/%d 兜底观测，%d 个排列）"
           % ("n/a" if p11["cond_D_follows_among_fallback"] is None else "%5.1f%%" % (p11["cond_D_follows_among_fallback"] * 100),
              p11["cond_D_fallback_obs"], p11["cond_D_fallback_obs"], p11["cond_D_permutations"]))
+    print("  PROBE 14 删除即上位  删掉 %s 后：%d/%d 个话题的**在场人员**变了（其中 %d 个权重一个都没变），"
+          "记录点名了 %d/%d 次上位"
+          % (p14.get("victim"), p14.get("panel_changed", 0), p14.get("n", 0),
+             p14.get("zero_weight_change", 0), p14.get("named_by_record", 0),
+             p14.get("panel_changed", 0)))
     print("  PROBE 13 兜底成本（面板替换）  规则面板 vs 兜底面板：平均重合 %s/3   换掉≥2人占比 %s   (n=%d 条命中规则的话题)" % (
         p13["mean_overlap"], ("%.1f%%" % (p13["replaced_ge2"] * 100)) if p13["replaced_ge2"] is not None else "n/a", p13["n"]))
     print("  PROBE 12 名册键序不变性（分数全平）  选中集合变化率 %5.1f%%   （%d 次键序置换 × %d 话题）" % (p12 * 100, PERM_TRIALS, len(topics)))

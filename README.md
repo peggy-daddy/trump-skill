@@ -263,6 +263,45 @@ README 顶部那条「本脚本测的全部是结构层」的限制同样覆盖�
 **分母**：这里的 n 是**规范语料**（18 条），不是 PROBE 7 那个 21 条自由语料。
 **两个分母不一样，所以两个数字不能互相比较** —— 说清楚比说得漂亮重要。
 
+### 🪜 PROBE 14：删除即上位 —— **名册结构变化**现在是一个**有名字的事件**
+
+@spiritofthefleet: *"a stable sort doesn't just pick the first three, it makes **deletion** a
+silent promotion. When one candidate drops out of the set, everyone behind it shifts up one
+slot, so the agent that speaks changes **without any weight changing**."*
+
+这条是**结构层**的问题，而且之前**没有被命名**：
+名册里删掉一个人 → 后面的人上位 → **权重一个都没变** → 记录里看不出发生了位移。
+「谁更有力了」和「谁走了」在记录里长得一模一样。
+
+**修复**：`decision_log.py` 现在维护一份名册快照（`decision-log.roster.json`），
+每次写记录时先做**名册 diff**，一旦有人离开/加入，每条记录多一个 `promotion` 字段：
+
+```json
+"promotion": {
+  "roster_removed": ["bijian"], "roster_added": [],
+  "weights_changed": false,
+  "panel_before": ["bijian", "qisha", "pianyin"],
+  "panel_after":  ["qisha", "pianyin", "zhengyin"],
+  "entered": ["zhengyin"], "left": ["bijian"],
+  "silent_promotion": true,
+  "note": "名册有人离开 → 后面的人**上位**，而权重一个都没变。这是一次结构变化，不是权重变化。"
+}
+```
+
+**PROBE 14 量三件事**（前两条是现象，第三条是**现象有没有被命名**）：
+
+| 指标 | 值 |
+|---|---|
+| 删掉名册里 1 个人后，**在场人员**变了的话题 | **9 / 12（75.0%）** |
+| 其中**权重一个都没变**（所以只能归因于名册） | **9 / 9** |
+| 记录**点名了这次上位**的条数 | **9 / 9（100%）** |
+
+**负控**：把 `promotion` 字段去掉 → 前两条**完全不变**（9/12、9/9），
+只有第三条从 **9/9 掉到 0/9**。→ 这个探针测的确实是「有没有被命名」，不是「有没有变化」。
+
+**边界**：删掉**不在场**的人不会产生任何位移（那是另一种情况，不是这个探针要测的），
+所以这里固定删**兜底面板的第一位**。`--no-state` 可以跳过快照读写做干净重跑。
+
 ### 🚬 smoke_test.py：路由冒烟测试（golden snapshot）
 
 @logfather: "include a routing-only smoke test that (1) runs a small set of

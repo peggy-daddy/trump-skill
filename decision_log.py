@@ -256,7 +256,39 @@ def decide(topic, profile, topic_memory):
     )
 
 
-def build_record(topic, profile, topic_memory, roster_order=None):
+def roster_diff(profile, prev_state):
+    """名册变化：谁走了、谁来了、权重变没变。
+
+    @spiritofthefleet: "a stable sort doesn't just pick the first three, it makes
+    *deletion* a silent promotion. When one candidate drops out of the set,
+    everyone behind it shifts up one slot, so the agent that speaks changes
+    without any weight changing."
+
+    → 名册成员的增减是一种**结构变化**，不是权重的变化。
+    → 所以它必须被**单独命名**，否则「谁在说话变了」和「谁更有力变了」
+    在记录里长得一模一样。
+    """
+    if not prev_state:
+        return None
+    cur = list(profile["tenGods"].keys())
+    old = list(prev_state.get("roster") or [])
+    removed = [k for k in old if k not in cur]
+    added = [k for k in cur if k not in old]
+    ow = prev_state.get("weights") or {}
+    cw = {k: g.get("score", 0) for k, g in profile["tenGods"].items()}
+    weights_changed = {k: (ow.get(k), cw.get(k)) for k in cur
+                       if k in ow and ow.get(k) != cw.get(k)}
+    if not removed and not added and not weights_changed:
+        return None
+    return {"removed": removed, "added": added,
+            "old_weights": ow,
+            "old_gods": prev_state.get("gods") or {},
+            "old_roster": old,
+            "weights_changed": bool(weights_changed),
+            "weights_delta": weights_changed}
+
+
+def build_record(topic, profile, topic_memory, roster_order=None, roster_delta=None):
     """写一条决策记录。
 
     记录的 `chosen` 来自**生产路径**（demo.choose）——
@@ -282,6 +314,41 @@ def build_record(topic, profile, topic_memory, roster_order=None):
     # → 记录里必须写明「这次是在什么条件下产生的」，
     #   而且 --verify 必须**从记录里**重建条件，不能用自己命令行上的默认值。
     _sc = [g.get("score", 0) for g in profile["tenGods"].values()]
+    # ---- 名册变化导致的「无声上位」要写进记录 ----
+    # 权重一个都没变，但在场的人变了 —— 这必须是一个**有名字的事件**，
+    # 否则读记录的人无法把「谁更有力了」和「谁走了」分开。
+    if roster_delta:
+        # 重建**旧名册**：用快照里存的**完整** gods，而不是「从现在的 profile 里删掉谁」。
+        # ⚠️ 我第一版写成了后者 —— 而现在的 profile **已经**没有那个人了，
+        # 所以 before == after，promotion 永远是空的。**重建历史状态必须用历史状态本身。**
+        old_prof = json.loads(json.dumps(profile))
+        _old_gods_src = roster_delta.get("old_gods") or {}
+        _old_gods = {}
+        for _k in (roster_delta.get("old_roster") or []):
+            if _k in _old_gods_src:
+                _old_gods[_k] = dict(_old_gods_src[_k])
+            elif _k in profile["tenGods"]:
+                _old_gods[_k] = dict(profile["tenGods"][_k])
+        if _old_gods:
+            old_prof["tenGods"] = _old_gods
+        before, _ = D.choose(topic, old_prof, topic_memory)
+        after, _ = D.choose(topic, profile, topic_memory)
+        entered = [k for k in after if k not in before]
+        left = [k for k in before if k not in after]
+        rec["promotion"] = {
+            "roster_removed": roster_delta.get("removed", []),
+            "roster_added": roster_delta.get("added", []),
+            "weights_changed": roster_delta.get("weights_changed", False),
+            "panel_before": list(before),
+            "panel_after": list(after),
+            "entered": entered,
+            "left": left,
+            "silent_promotion": bool(entered) and not roster_delta.get("weights_changed"),
+            "note": ("名册有人离开 → 后面的人**上位**，而权重一个都没变。"
+                     "这是一次结构变化，不是权重变化。"
+                     if entered and not roster_delta.get("weights_changed")
+                     else "名册/权重发生变化。"),
+        }
     rec["conditions"] = {
         "score_mode": "flattened" if len(set(_sc)) <= 1 else "actual",
         "flattened": len(set(_sc)) <= 1,
@@ -303,6 +370,8 @@ def main():
     ap.add_argument("--verify", default=None,
                     help="用独立实现重算并对已有记录做一致性检查")
     ap.add_argument("--seed", type=int, default=20261023)
+    ap.add_argument("--no-state", action="store_true",
+                    help="不读也不写名册快照（用于干净重跑）")
     ap.add_argument("--flatten", action="store_true",
                     help="把力量值全部拉平（用来把 tie-break 暴露成可读字段）")
     args = ap.parse_args()
@@ -354,9 +423,25 @@ def main():
               "两边不是同一份代码）")
         return 0 if disagree == 0 else 1
 
+    # 名册快照：用来发现「谁走了」这类**结构变化**
+    rs_path = os.path.join(ROOT, "decision-log.roster.json")
+    prev_state = None
+    if os.path.exists(rs_path) and not args.no_state:
+        try:
+            with open(rs_path, encoding="utf-8") as f:
+                prev_state = json.load(f)
+        except Exception:
+            prev_state = None
+    delta = roster_diff(profile, prev_state)
+    if delta:
+        print("[ROSTER] 名册发生变化： removed=%s added=%s weights_changed=%s"
+              % (delta["removed"], delta["added"], delta["weights_changed"]))
+        if delta["removed"]:
+            print("        → 后面的人会**无声上位**；每条记录现在带 promotion 字段。")
+
     records = []
     for t in TOPICS:
-        records.append(build_record(t, profile, topic_memory))
+        records.append(build_record(t, profile, topic_memory, roster_delta=delta))
     if args.permutations:
         rng = random.Random(args.seed)
         for _ in range(args.permutations):
@@ -367,6 +452,15 @@ def main():
                 r["permuted"] = True
                 records.append(r)
 
+    if not args.no_state:
+        with open(rs_path, "w", encoding="utf-8") as f:
+            json.dump({"roster": list(profile["tenGods"].keys()),
+                       "weights": {k: g.get("score", 0)
+                                   for k, g in profile["tenGods"].items()},
+                       # 快照存**完整**的 gods：重建旧名册需要旧人格本身，
+                       # 只存权重的话，「旧状态」是造不出来的。
+                       "gods": profile["tenGods"]},
+                      f, ensure_ascii=False, indent=2)
     with open(args.out, "w", encoding="utf-8") as f:
         for r in records:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
