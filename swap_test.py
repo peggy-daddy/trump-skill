@@ -38,12 +38,15 @@ PROBE 8 就是把这个盲区**当成一个数字报出来**，而不是藏在�
 
 import argparse
 import copy
+import datetime
+import hashlib
 import json
 import math
 import os
 import random
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import unicodedata
@@ -98,6 +101,7 @@ MIN_N = {
     "probe10_turn_influence": 10,
 "probe11_tiebreak": 10,
     "probe12_key_perm": 20,
+    "probe13_fallback_cost": 12,
 }
 
 
@@ -409,6 +413,85 @@ def _remap_gods(profile):
 
 
 PERM_TRIALS = 20
+
+# ---------------------------------------------------------------------------
+# 规范语料（canonical prompts）：每条规则至少两条 + 三条兜底。
+# @logfather: "a routing-only smoke test that runs a small set of canonical
+# prompts exercising every rule" —— 这份语料同时供 PROBE 13 与 smoke_test.py 用，
+# 免得两处各维护一套「代表性话题」然后各自漂移。
+# ---------------------------------------------------------------------------
+CANONICAL_PROMPTS = [
+    ("对伊朗动武，军事打击", "military"),
+    ("战争迷雾：导弹与航母", "military"),
+    ("关税谈判与贸易协议", "deal"),
+    ("这笔交易合同能不能签，谈判破裂", "deal"),
+    ("假新闻：媒体和记者的报道", "media"),
+    ("电视台收视下滑，报纸不印了", "media"),
+    ("我最强大，史上最伟大，政绩第一", "ego"),
+    ("我是谁？我最棒，历史属于我", "ego"),
+    ("边境移民非法驱逐，对手国家", "rival"),
+    ("竞争对手在挖我的客户，敌人出现", "rival"),
+    ("家族传承：父亲的儿子女儿与遗产", "family"),
+    ("家族产业的继承问题，遗产分配", "family"),
+    ("地产项目的利润与收入，品牌的商业价值", "money"),
+    ("这笔生意赚了多少利润，商业地产", "money"),
+    ("选举与政策法案，president 对 america", "policy"),
+    ("总统选举，democrat 与 republican 的政策", "policy"),
+    ("社交媒体与科技平台", "tech"),
+    ("推特发文，社交媒体科技公司", "tech"),
+    ("今天天气不错", None),
+    ("随便聊聊", None),
+    ("怎么办才好呢", None),
+]
+
+
+def probe13_fallback_cost(profile, topic_memory, prompts=None):
+    """PROBE 13：兜底成本 —— 兜底**被数了**，但没被**定价**。
+
+    @deadeye-bart: "a routed question gets the strong voice framing the frame
+    on purpose; a fallthrough question gets whoever the default happens to seat,
+    and nobody chose them for that topic. Is there a probe that prices that?"
+
+    做法：对每条**命中规则**的话题，比较「规则选的三个人」和「兜底选的三个人」：
+    重合几个？换掉了几个？换掉 ≥2 个的话题占多少？
+
+    **边界（必须说清楚）**：这测的是**结构成本**（谁在场），
+    不是**答案成本**（答得好不好）。后者要真的调模型，不在这个 harness 的能力范围内。
+
+    **分母**：这里的 n 是**规范语料里命中规则的话题数**，不是 PROBE 7 那个 21 条自由语料。
+    两个分母不一样，所以两个数字不能互相比较 —— 说清楚比说得漂亮重要。
+    """
+    gods = profile["tenGods"]
+    fb = [k for k, _ in sorted(gods.items(),
+                               key=lambda kv: (-kv[1].get("score", 0),
+                                               kv[1].get("roster_rank", 999)))][:3]
+    rows = []
+    for topic, expect in (prompts if prompts is not None else CANONICAL_PROMPTS):
+        keys, reason = D.choose(topic, profile, topic_memory)
+        routed = "兜底" not in reason
+        if not routed:
+            continue
+        ov = len(set(keys) & set(fb))
+        rows.append({"topic": topic, "expected": expect,
+                     "routed": list(keys), "fallback": list(fb),
+                     "overlap": ov, "replaced": 3 - ov,
+                     "route_matched_expected": (expect is None or
+                                                set(keys) == set(D.STATIC_ROUTING.get(expect, ([], ""))[0]))})
+    n = len(rows)
+    if not n:
+        return {"n": 0, "mean_overlap": None, "dist": {}, "replaced_ge2": None,
+                "rows": [], "fallback_panel": fb, "note": "规范语料里没有命中规则的话题"}
+    dist = {}
+    for r in rows:
+        dist[r["overlap"]] = dist.get(r["overlap"], 0) + 1
+    ge2 = sum(1 for r in rows if r["replaced"] >= 2)
+    matched = sum(1 for r in rows if r["route_matched_expected"])
+    return {"n": n, "mean_overlap": round(sum(r["overlap"] for r in rows) / n, 3),
+            "dist": {k: dist[k] for k in sorted(dist)},
+            "replaced_ge2": round(ge2 / n, 4),
+            "route_matched_expected": matched,
+            "rows": rows, "fallback_panel": fb,
+            "note": "结构成本（谁在场），不是答案成本（答得好不好）"}
 
 
 def probe12_key_permutation_invariance(topics, profile, topic_memory,
@@ -770,6 +853,9 @@ def report(topics, as_json=False):
                  parity_compared, MIN_N["probe9_table_parity"],
                  applicable=parity_diff is not None,
                  note="路由表条目数决定了这个检验能承载多少结论")
+    p13 = probe13_fallback_cost(profile, topic_memory)
+    v13 = verdict(p13["replaced_ge2"], p13["n"], MIN_N["probe13_fallback_cost"],
+                  note="兜底面板换掉≥2人的比例（结构成本，不是答案成本）")
     p12, p12_n = probe12_key_permutation_invariance(topics, profile, topic_memory)
     v12 = verdict(p12, p12_n, MIN_N["probe12_key_perm"],
                   note="名册键序不变性（分数全平时的极端情形）")
@@ -780,7 +866,62 @@ def report(topics, as_json=False):
                   p11["cond_D_fallback_obs"], MIN_N["probe11_tiebreak"],
                   note="权重全平时，选中的三个人是否 = 输入名册顺序的前三个")
 
+    # ---- 运行回执（receipt）----
+    # @meridiansignal: "persist the configuration hash and fixture version beside
+    # each result, so a later verifier can distinguish a real regression from a
+    # check run under different conditions."
+    # @kai_the_familiar: "a check result is only a receipt if it names what it
+    # actually read — source, date, scope."
+    # → 一次运行必须能回答：**这份数字是哪一份代码、哪一份 profile、哪一批语料、
+    #   什么时候跑出来的。** 否则它只是一句话。
+    try:
+        _sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
+                              capture_output=True, text=True).stdout.strip() or "unknown"
+        _dirty = bool(subprocess.run(["git", "status", "--porcelain"], cwd=ROOT,
+                                     capture_output=True, text=True).stdout.strip())
+    except Exception:
+        _sha, _dirty = "unknown", False
+    manifest = {
+        "harness": "swap_test.py",
+        "git_sha": _sha,
+        "git_dirty": _dirty,
+        "profile_hash": hashlib.sha256(
+            json.dumps(profile.get("tenGods", {}), ensure_ascii=False,
+                       sort_keys=True).encode()).hexdigest()[:12],
+        "fixture": "free-topics-v1 + canonical-v1",
+        "fixture_topic_count": len(topics),
+        "canonical_prompt_count": len(CANONICAL_PROMPTS),
+        "started": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+    }
+
+    _vd = {
+        "probe6_visible": v6_vis, "probe6_conditional": v6_cond,
+        "probe7_fallback_a": v7_a, "probe7_fallback_b": v7_b,
+        "probe8_persona_layer": v8, "probe9_table_parity": v9,
+        "probe10_turn_influence": v10,
+        "probe11_tiebreak_follows_input_order": v11,
+        "probe12_key_perm_invariance": v12,
+        "probe13_fallback_cost": v13,
+    }
+    _states = {}
+    for _v in _vd.values():
+        _states[_v["state"]] = _states.get(_v["state"], 0) + 1
+    # 最差**可断言**状态：NOT_APPLICABLE 是「本轮不适用」，不是「弱断言」，
+    # 所以它单独数，不进 worst_claim_state。
+    worst_claim_state = "INADEQUATE" if _states.get("INADEQUATE") else "OK"
+    # @kai_the_familiar: "UNMEASURED needs to survive summarization."
+    # → 摘要行必须**同时**带三种状态的计数，且**不能**被压成「基本通过」。
+    summary_line = ("probes=%d | OK=%d INADEQUATE=%d NOT_APPLICABLE=%d | "
+                    "worst_claim_state=%s | zero_observation=%d"
+                    % (len(_vd), _states.get("OK", 0), _states.get("INADEQUATE", 0),
+                       _states.get("NOT_APPLICABLE", 0), worst_claim_state,
+                       _states.get("NOT_APPLICABLE", 0)))
+
     out = {
+        "manifest": manifest,
+        "state_counts": _states,
+        "worst_claim_state": worst_claim_state,
+        "summary_line": summary_line,
         "topics": len(topics),
         "probe1_reseed_sig_change": round(p1, 3),
         "probe2_static_roster_sig_change": round(p2_sig, 3),
@@ -802,23 +943,16 @@ def report(topics, as_json=False):
         "probe7_cross_domain_verdict": p7_verdict,
         "probe7_real_routes_domain_b": len(real_routes_b),
         "observations": obs,
-        "verdicts": {
-            "probe6_visible": v6_vis,
-            "probe6_conditional": v6_cond,
-            "probe7_fallback_a": v7_a,
-            "probe7_fallback_b": v7_b,
-            "probe8_persona_layer": v8,
-            "probe9_table_parity": v9,
-            "probe10_turn_influence": v10,
-"probe11_tiebreak_follows_input_order": v11,
-            "probe12_key_perm_invariance": v12,
-        },
+        "verdicts": _vd,
         "probe10_turn_influence_rate": round(p10, 4),
         "probe10_turn_influence_perturbations": p10_n,
         "probe10_panel_membership_change_rate": round(p10_disp_rate, 4),
 "probe11_tiebreak": p11,
         "probe12_key_perm_selection_change_rate": round(p12, 4),
         "probe12_key_perm_trials": p12_n,
+        "probe13_fallback_cost": p13,
+        "probe13_mean_overlap": p13["mean_overlap"],
+        "probe13_replaced_ge2_rate": p13["replaced_ge2"],
         "probe0_null_whitespace_change_rate": round(p0, 4),
         "probe0_null_surface_change_rate": round(p0b, 4),
         "detector_false_positive_floor": round(detector_fp, 4),
@@ -870,6 +1004,8 @@ def report(topics, as_json=False):
     print("         └ 条件D：权重全平时选中的人 = 文件行序前三？ %s   （%d/%d 兜底观测，%d 个排列）"
           % ("n/a" if p11["cond_D_follows_among_fallback"] is None else "%5.1f%%" % (p11["cond_D_follows_among_fallback"] * 100),
              p11["cond_D_fallback_obs"], p11["cond_D_fallback_obs"], p11["cond_D_permutations"]))
+    print("  PROBE 13 兜底成本（面板替换）  规则面板 vs 兜底面板：平均重合 %s/3   换掉≥2人占比 %s   (n=%d 条命中规则的话题)" % (
+        p13["mean_overlap"], ("%.1f%%" % (p13["replaced_ge2"] * 100)) if p13["replaced_ge2"] is not None else "n/a", p13["n"]))
     print("  PROBE 12 名册键序不变性（分数全平）  选中集合变化率 %5.1f%%   （%d 次键序置换 × %d 话题）" % (p12 * 100, PERM_TRIALS, len(topics)))
 
     print("         └ 面板成员变动率          %5.1f%%   （这是排序在工作，不是影响）" % (p10_disp_rate * 100))
@@ -920,6 +1056,17 @@ def report(topics, as_json=False):
     print("     报告这个数字时，**前提数字必须和结果数字一起给**，否则条件会静默变成无条件。")
     print("   · RESOLUTION  →  面板是 N 个问题上的一个粗量化器。")
     print()
+    print("  ── 运行回执（这份数字读的是什么）──────────────────────────────")
+    print("     git_sha      : %s%s" % (manifest["git_sha"],
+                                        "  (工作树有改动)" if manifest["git_dirty"] else ""))
+    print("     profile_hash : %s   (trump-profile.json / tenGods)" % manifest["profile_hash"])
+    print("     fixture      : %s  (自由语料 %d 条 + 规范语料 %d 条)"
+          % (manifest["fixture"], manifest["fixture_topic_count"],
+             manifest["canonical_prompt_count"]))
+    print("     started      : %s" % manifest["started"])
+    print("     摘要行        : %s" % summary_line)
+    print("     （摘要行把三种状态**同时**写在一行里 —— 它不能被压成「基本通过」。）")
+    print()
     print("  ── 三态结果（值 / 观测数 / 区间 / 适用性）────────────────────────────")
     for _lbl, _v in [("PROBE 6 可见", v6_vis), ("PROBE 6 条件性", v6_cond),
                      ("PROBE 7 领域A", v7_a), ("PROBE 7 领域B", v7_b),
@@ -927,7 +1074,8 @@ def report(topics, as_json=False):
                      ("PROBE 10 发言位影响", v10),
 
                      ("PROBE 11 跟着行序走", v11),
-                     ("PROBE 12 键序不变性", v12)]:
+                     ("PROBE 12 键序不变性", v12),
+                     ("PROBE 13 兜底成本", v13)]:
 
         if _v["state"] == "OK":
             _ci = _v["ci"]

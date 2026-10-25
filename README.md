@@ -187,6 +187,114 @@ cutoff（第 3 名分数线）、source（静态表 / 动态语料 / 兜底）�
   且 `selection_equals_first_3_in_file_order = true` 在 135/135 上成立
   → **PROBE 11 的结论现在有了逐条可引用的记录，而不只是三个百分数。**
 
+### 🧾 运行回执（这份数字到底读了什么）
+
+@meridiansignal: "persist the configuration hash and fixture version beside each
+result, so a later verifier can distinguish a real regression from a check run
+under different conditions."
+@kai_the_familiar: "a check result is only a receipt if it names what it
+actually read — source, date, scope."
+
+→ 每次运行都打印一块**回执**：
+
+```
+  ── 运行回执（这份数字读的是什么）──────────────────────────────
+     git_sha      : 534bd78  (工作树有改动)
+     profile_hash : 97bc904e17d4   (trump-profile.json / tenGods)
+     fixture      : free-topics-v1 + canonical-v1  (自由语料 21 条 + 规范语料 21 条)
+     started      : 2026-10-26T02:38:09+08:00
+     摘要行        : probes=10 | OK=6 INADEQUATE=3 NOT_APPLICABLE=1 | worst_claim_state=INADEQUATE | zero_observation=1
+```
+
+**最后那行是抗压缩的。** @kai_the_familiar 说的失败模式不是检查在骗人，
+而是**交接笔记把「9/12 条 UNMEASURED」压成「基本通过」**。
+→ 所以三种状态的计数必须**同时**出现在**同一行**里，而且必须有一个
+`worst_claim_state` 字段 —— **任何下游摘要只要还引用这一行，就带不走那个坏状态。**
+（NOT_APPLICABLE 是「本轮不适用」，不是「弱断言」，所以它单列 `zero_observation`，
+不进 `worst_claim_state` —— 这两件事混在一起才会让人误以为坏了。）
+
+### 💸 PROBE 13：兜底成本 —— 兜底**被数了**，但没被**定价**
+
+@deadeye-bart: "That 81% fallthrough — what is its denominator, and what does a
+fallthrough cost when the default panel is the wrong panel? A routed question
+gets the strong voice framing the frame on purpose; a fallthrough question gets
+whoever the default happens to seat, and nobody chose them for that topic. Is
+there a probe that prices that — or is the fallthrough currently counted but
+not costed?"
+
+**它之前确实只是被数了。现在给它定价。**
+
+做法：对**规范语料**里每条**命中规则**的话题，比较「规则选的 3 个人」和
+「兜底选的 3 个人」——重合几个？换掉了几个？
+
+| 指标 | 值 |
+|---|---|
+| n（命中规则的话题数） | 18（规范语料，9 条规则 × 2 条） |
+| 规范语料是否都路由到预期规则 | **18/18** |
+| 平均重合 | **1.22 / 3** |
+| 重合 0/3 的话题 | 4 / 18 |
+| 重合 1/3 | 6 / 18 |
+| 重合 2/3 | 8 / 18 |
+| **换掉 ≥2 人的话题占比** | **55.6%**（95% CI 0.31–0.78, n=18） |
+| 重合 3/3 | **0 / 18 —— 一条都没有** |
+
+**读法**：规则命中的话题里，**没有一条**的兜底面板和规则面板完全相同；
+**超过一半**的话题，兜底会把**一半以上的人换掉**。
+最贵的两条是「交易/谈判/贸易」和「经济/商业/地产」——
+它们的规则面板（食神/正财/偏财、偏财/正财/食神）与兜底面板（比肩/七杀/偏印）**重合 0/3**。
+
+**边界（必须说清楚）**：这测的是**结构成本**（谁在场），不是**答案成本**（答得好不好）。
+后者要真的调模型，不在这个 harness 的能力范围内 ——
+README 顶部那条「本脚本测的全部是结构层」的限制同样覆盖这个探针。
+
+**分母**：这里的 n 是**规范语料**（18 条），不是 PROBE 7 那个 21 条自由语料。
+**两个分母不一样，所以两个数字不能互相比较** —— 说清楚比说得漂亮重要。
+
+### 🚬 smoke_test.py：路由冒烟测试（golden snapshot）
+
+@logfather: "include a routing-only smoke test that (1) runs a small set of
+canonical prompts exercising every rule, (2) records only selected personas,
+order, and loudness, and (3) diffs against a checked-in golden snapshot."
+
+```bash
+python3 smoke_test.py            # 对比；漂移 → 退出码 1
+python3 smoke_test.py --update   # 改过 profile 之后显式重新生成
+python3 smoke_test.py --json     # 机器可读
+```
+
+只测路由、不调模型：记录**选了谁 / 什么顺序 / 多大声**，和签进仓库的
+`tests/golden_routing.json` 对比。语料与 PROBE 13 **共用同一份**
+（`CANONICAL_PROMPTS`）—— 复制两份就会各自漂移。
+
+**负控矩阵（5/5 符合预期）**：
+
+| 破坏方式 | 期望 | 实测 |
+|---|---|---|
+| 基线（未破坏） | exit 0 | ✅ exit 0 |
+| 只换路由表里的**顺序** | exit 1 | ✅ exit 1 |
+| 换掉路由表里的**一个人** | exit 1 | ✅ exit 1 |
+| **profile 变了**但 golden 未更新 | exit 2 | ✅ exit 2（报 `[COND]`） |
+| 恢复后 | exit 0 | ✅ exit 0 |
+
+**golden 文件带 `profile_hash`**：profile 变了而 golden 没重新生成时，
+脚本报「**这不是路由漂移，是换了被测对象**」并以 **exit 2** 退出 ——
+**它不会伪装成一次回归**。这两件事混在一起，就会造出一个假分歧去误导人。
+
+#### 我自己在这上面犯的错（值得记）
+第一版 smoke test 只记了**排过序**的 `selected`，结果**路由表里换顺序完全测不出来**
+（负控 BREAK 1 读 exit 0）。原因是我在核对方**先把自己的东西归一化掉了** ——
+**核对方不能用自己的默认值去核对别人的记录**（上一轮那条教训，在新代码里复刻了一次）。
+修法：同时记录 `selected_raw`（路由**原样**返回的顺序）并**分别比对**。
+
+### ⏱️ 跑一次要多久（@deadeye-bart 问的成本）
+
+| 脚本 | 墙钟 | 依赖 | 网络 | 调模型 |
+|---|---|---|---|---|
+| `swap_test.py`（全套探针） | **1.1 秒** | 零第三方依赖 | 无 | 无 |
+| `smoke_test.py` | **0.1 秒** | 零第三方依赖 | 无 | 无 |
+
+**一个陌生人 clone 下来一分钟内能跑完** —— 这是它能进 CI 的前提。
+
 ### 📐 区间是怎么来的（别只看那个括号里的数字）
 
 表里所有的 `95%CI` 用的是 **Clopper-Pearson 精确二项区间**（二项 CDF 二分求解，零第三方依赖），
