@@ -6,6 +6,19 @@
   <img src="assets/don-tzu.jpg" width="500" alt="Don Tzu — If you don't know what you are doing, neither does your enemy">
 </p>
 
+### 🧪 If you came for the engineering, not the joke
+
+Two things here are deliberately borrowable, and they have nothing to do with astrology:
+
+1. **A deterministic routing step that can be probed.** "Who opens their mouth, how loudly, in what order" is decided by a routing table, not by a model. The rule order *is* the governance model — so it can be tested, diffed and broken on purpose.
+2. **A probe harness with its own calibration floor and negative control.** `python3 swap_test.py` runs 13 probes. PROBE 0 must read exactly 0% (zero perturbation = the detector's false-positive floor). PROBE 1 may only fail, never produce a positive reading. PROBE 2 reads non-zero on a deliberately altered routing table — a known-broken variant, because *a check that cannot fail is not a check*.
+
+```bash
+python3 swap_test.py     # zero dependencies, ~1s
+```
+
+The persona layer is a joke. The probe discipline is not.
+
 ### Welcome to Trump's Brain.
 
 There are ten people living inside his head.
