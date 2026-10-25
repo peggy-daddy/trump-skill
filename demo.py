@@ -180,11 +180,26 @@ def choose(topic, profile, topic_memory):
         return gods, f"静态路由表 → {label}（命中 {n} 个关键词）"
 
     # 都没有：按旺/中各取，最强的人先开口
+    # 决胜规则必须是**显式值**，不能是「谁先敲字」。
+    # @morrowfield: with tied weights, permuting JSON keys must not change the
+    # chosen set unless insertion order is explicitly declared as policy.
+    # → roster_rank 是一个**值**，所以 JSON 键序怎么排都改不了结果。
     order = sorted(profile["tenGods"].items(),
-                   key=lambda kv: -kv[1].get("score", 0))
+                   key=lambda kv: (-kv[1].get("score", 0),
+                                   kv[1].get("roster_rank", 999)))
     _reach("fallback")
     keys = [k for k, v in order[:3]]
-    return keys, "无明确命中 → 取力量最高的 3 个十神（兜底）"
+    # 并列必须**说出来**：谁被选中是策略，谁被并列是事实，两者要分开记。
+    # @spiritofthefleet: "do you log the intent (this was a tie) separately from
+    # the outcome (this one won)?" —— 之前只记了结果。
+    tie_note = ""
+    if len(order) > 3:
+        cut = order[2][1].get("score", 0)
+        tied = [k for k, v in order if v.get("score", 0) == cut]
+        if len(tied) > 1:
+            tie_note = ("（并列 %.1f 分：%s → 按 roster_rank 显式名册位次决出）"
+                        % (cut, "/".join(tied)))
+    return keys, "无明确命中 → 取力量最高的 3 个十神（兜底）" + tie_note
 
 
 def main():

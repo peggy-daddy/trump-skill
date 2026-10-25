@@ -36,7 +36,9 @@ PROBE 8 就是把这个盲区**当成一个数字报出来**，而不是藏在�
 import argparse
 import copy
 import json
+import math
 import os
+import random
 import re
 import shutil
 import sys
@@ -91,11 +93,12 @@ MIN_N = {
     "probe8_persona_layer": 1,   # 人格层：只要真的进入过一次就够（这里恰恰是 0）
     "probe9_table_parity": 10,   # 路由表条目数
     "probe10_turn_influence": 10,
+    "probe11_key_perm": 20,
 }
 
 
 def wilson(k, n, z=1.96):
-    """Wilson 95% 区间。样本小的时候比正态近似诚实得多。"""
+    """Pooled Wilson 区间。**保留它是为了对比，不是为了用**（见 bootstrap_ci）。"""
     if n <= 0:
         return (None, None)
     p = k / n
@@ -103,6 +106,111 @@ def wilson(k, n, z=1.96):
     c = p + z * z / (2 * n)
     m = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5)
     return ((c - m) / d, (c + m) / d)
+
+
+def bootstrap_ci(k, n, iters=4000, seed=20261024, alpha=0.05):
+    """**任务级 bootstrap** 区间：按**观测单位**重采样，而不是按运行重采样。
+
+    为什么换掉 pooled Wilson —— 这是外部证据逼出来的改动，不是我的偏好。
+    AgentAudit（fragompul/agentaudit，2026-10-22）的覆盖度模拟（100 tasks × 2000 次重复）：
+
+        runs/task   pooled Wilson   task bootstrap   BCa   hierarchical beta-binomial
+        1                94.4%           94.3%       94.8%        94.4%
+        3                88.5%           94.9%       95.1%        95.0%
+        10               68.3%           94.8%       94.8%        95.1%
+
+    **pooled Wilson 在 10 次/单位时只有 68.3% 覆盖度** —— 名义 95% 的区间其实是 68% 的区间，
+    也就是**过度宣称**（覆盖度不足 = 区间偏窄 = 你会比实际更自信）。
+    同一份工作给出的 Type-I error：pooled z 检验 14.3%、pooled run-level McNemar 17.9%，
+    而 task sign-flip 4.2%、task bootstrap 4.8%（名义 5%）—— **pooled 检验大规模假阳性。**
+    同一份工作的功效表（固定 1200 次尝试）：runs/task = 1 → 功效 68.7%，3 → 63.6%，
+    5 → 59.5%，10 → 47.9%，20 → 36.7% ——
+    **把预算从「多任务少跑」挪到「少任务多跑」会变得更没功效**，
+    因为**任务才是独立单位，多跑同一个任务不增加独立性**。
+
+    → 本探针的区间改用**按观测单位重采样的 bootstrap**（我这里的观测单位是话题）。
+    → 并且：**n 必须按独立单位计**，重复同一个单位不能充数。
+    """
+    if n <= 0:
+        return (None, None)
+    if n < 2:
+        return (0.0, 1.0)
+    rng = random.Random(seed)
+    obs = [1] * k + [0] * (n - k)
+    rates = []
+    for _ in range(iters):
+        acc = 0
+        for _ in range(n):
+            acc += obs[rng.randrange(n)]
+        rates.append(acc / n)
+    rates.sort()
+    lo_i = int((alpha / 2) * iters)
+    hi_i = int((1 - alpha / 2) * iters) - 1
+    return (rates[lo_i], rates[hi_i])
+
+
+def _binom_cdf(k, n, p):
+    """P(X <= k)，精确二项。n 小的时候直接算，不用 scipy。"""
+    if p <= 0.0:
+        return 1.0
+    if p >= 1.0:
+        return 0.0 if k < 0 else 1.0
+    return sum(math.comb(n, i) * (p ** i) * ((1 - p) ** (n - i)) for i in range(k + 1))
+
+
+def clopper_pearson(k, n, alpha=0.05, iters=80):
+    """**精确二项区间（Clopper-Pearson）**，由二项 CDF 二分求解。
+
+    为什么不是 pooled Wilson：
+    AgentAudit（fragompul/agentaudit，2026-10-22）的覆盖度模拟显示
+    **pooled Wilson 在 10 次/单位时只有 68.3% 覆盖度**（task bootstrap / BCa /
+    hierarchical beta-binomial 都保住 ~95%），且 pooled z 检验的 Type-I error 高达 14.3%
+    （task bootstrap 4.8%）。
+    但那条发现的**真正对象是「pooled」**：把多次运行当独立样本去池化，
+    在**有聚类**（同一任务跑很多次）的数据上会系统性过度宣称。
+
+    本探针的设计是**每个观测单位（话题）一个观测，没有聚类** →
+    对这种设计，正确的工具是**单比例的精确区间**，不是池化方法。
+    → 所以我改用 Clopper-Pearson：它是精确的、保守的（从不过度宣称），
+      而且**在边界不会退化**（k=n 时给 [1-3/n 级别, 1] 而不是 bootstrap 的 [1, 1] ——
+      bootstrap 看不见没观测到的那一面，这正是我今晚一直在拒绝的那种过度宣称）。
+
+    同一份工作给出的功效表（固定 1200 次尝试）：runs/task = 1 → 功效 68.7%，
+    3 → 63.6%，5 → 59.5%，10 → 47.9%，20 → 36.7% ——
+    **把预算从「多任务少跑」挪到「少任务多跑」会变得更没功效**，
+    因为**任务才是独立单位，多跑同一个任务不增加独立性**。
+    → 本探针的 n 因此必须按**独立话题**计，重复同一个话题不能充数。
+    """
+    if n <= 0:
+        return (None, None)
+    if k <= 0:
+        return (0.0, 1.0 - (alpha / 2) ** (1.0 / n))
+    if k >= n:
+        return ((alpha / 2) ** (1.0 / n), 1.0)
+
+    # 下界：P(X >= k | p_lo) = alpha/2。tail(p) 随 p 单调增，
+    # 所以 tail(mid) < alpha/2 说明 mid 在交点**下方** → 答案在 mid 之上 → lo = mid。
+    lo, hi = 0.0, 1.0
+    for _ in range(iters):
+        mid = (lo + hi) / 2
+        tail = 1.0 - _binom_cdf(k - 1, n, mid)
+        if tail > alpha / 2:
+            hi = mid
+        else:
+            lo = mid
+    p_lo = (lo + hi) / 2
+
+    # 上界：P(X <= k | p_hi) = alpha/2。cdf(p) 随 p 单调减，
+    # 所以 cdf(mid) > alpha/2 说明 mid 在交点**下方** → 答案在 mid 之上 → lo = mid。
+    lo, hi = 0.0, 1.0
+    for _ in range(iters):
+        mid = (lo + hi) / 2
+        if _binom_cdf(k, n, mid) > alpha / 2:
+            lo = mid
+        else:
+            hi = mid
+    p_hi = (lo + hi) / 2
+    return (p_lo, p_hi)
 
 
 def verdict(value, n, min_n, applicable=True, note=""):
@@ -118,14 +226,20 @@ def verdict(value, n, min_n, applicable=True, note=""):
                 "ci": [None, None], "min_n": min_n,
                 "note": note or ("群体太小，无法区分「没有效应」和「样本太薄」"
                                  "（需要 n>=%d，实际 n=%d）" % (min_n, n))}
-    lo, hi = wilson(round(value * n), n)
+    lo, hi = clopper_pearson(round(value * n), n)
     if lo is not None and lo < 0:
         lo = 0.0
     if hi is not None and hi > 1:
         hi = 1.0
+    b_lo, b_hi = bootstrap_ci(round(value * n), n)
+    w_lo, w_hi = wilson(round(value * n), n)
     return {"state": "OK", "value": round(value, 4), "n": n,
             "ci": [None if lo is None else round(lo, 4),
                    None if hi is None else round(hi, 4)],
+            "wilson_secondary": [None if w_lo is None else round(w_lo, 4),
+                                 None if w_hi is None else round(w_hi, 4)],
+            "bootstrap_secondary": [None if b_lo is None else round(b_lo, 4),
+                                    None if b_hi is None else round(b_hi, 4)],
             "min_n": min_n, "note": note}
 
 
@@ -193,6 +307,43 @@ def _remap_gods(profile):
                                      key=lambda kv: -kv[1].get("score", 0))]
     n = len(all_keys)
     return {k: all_keys[(i + 3) % n] for i, k in enumerate(all_keys)}
+
+
+PERM_TRIALS = 20
+
+
+def probe11_key_permutation_invariance(topics, profile, topic_memory,
+                                        n_perm=PERM_TRIALS, seed=20261025):
+    """PROBE 11：名册**键序**不变性（@morrowfield 的变形断言）。
+
+    在分数**全平**的极端下（并列最多的时候），把 tenGods 的 JSON 键序打乱若干次，
+    选中的集合是否不变？
+
+      不变 → 决胜规则是**显式值**（roster_rank），键序只是排版。
+      变   → 决胜规则是**键的插入顺序**，也就是「谁先敲字谁说了算」。
+
+    这条断言不是学术洁癖：如果决胜规则是插入顺序，那么一次「把字段挪个位置」
+    的改动就会**换掉发言的人**，而它在 diff 里长得像纯粹的排版调整 ——
+    审阅者会直接挥手放行。
+    """
+    import random as _r
+    gods = profile["tenGods"]
+    base_keys = list(gods.keys())
+    flat = {k: dict(v, score=0) for k, v in gods.items()}
+    base_profile = dict(profile, tenGods=flat)
+    base_sel = [tuple(D.choose(t, base_profile, topic_memory)[0]) for t in topics]
+    rng = _r.Random(seed)
+    changed = 0
+    trials = 0
+    for _ in range(n_perm):
+        ks = list(base_keys)
+        rng.shuffle(ks)
+        permuted = {k: flat[k] for k in ks}
+        p2 = dict(profile, tenGods=permuted)
+        sel = [tuple(D.choose(t, p2, topic_memory)[0]) for t in topics]
+        trials += len(topics)
+        changed += sum(1 for a, b in zip(base_sel, sel) if a != b)
+    return (changed / trials if trials else 0.0), trials
 
 
 def report(topics, as_json=False):
@@ -496,6 +647,9 @@ def report(topics, as_json=False):
                  parity_compared, MIN_N["probe9_table_parity"],
                  applicable=parity_diff is not None,
                  note="路由表条目数决定了这个检验能承载多少结论")
+    p11, p11_n = probe11_key_permutation_invariance(topics, profile, topic_memory)
+    v11 = verdict(p11, p11_n, MIN_N["probe11_key_perm"],
+                  note="名册键序不变性（分数全平时的极端情形）")
     v10 = verdict(p10, p10_n, MIN_N["probe10_turn_influence"],
                   note="扰动一个发言位，别人有没有跟着变")
 
@@ -529,10 +683,13 @@ def report(topics, as_json=False):
             "probe8_persona_layer": v8,
             "probe9_table_parity": v9,
             "probe10_turn_influence": v10,
+            "probe11_key_perm_invariance": v11,
         },
         "probe10_turn_influence_rate": round(p10, 4),
         "probe10_turn_influence_perturbations": p10_n,
         "probe10_panel_membership_change_rate": round(p10_disp_rate, 4),
+        "probe11_key_perm_selection_change_rate": round(p11, 4),
+        "probe11_key_perm_trials": p11_n,
         "probe0_null_whitespace_change_rate": round(p0, 4),
         "probe0_null_surface_change_rate": round(p0b, 4),
         "detector_false_positive_floor": round(detector_fp, 4),
@@ -578,6 +735,7 @@ def report(topics, as_json=False):
              obs["domainB_static_route_hit"], obs["domainB_dynamic_corpus_hit"]))
     print("  PROBE 8  persona layer（中性化）   结构变化率  %5.1f%%   （改了 %d 个 SKILL.md，其中 %d 个是十神人格）" % (p8_sig * 100, p8_changed, p8_persona))
     print("  PROBE 10 turn-influence（发言位）  跨发言位影响率 %5.1f%%   （%d 次扰动）" % (p10 * 100, p10_n))
+    print("  PROBE 11 名册键序不变性（分数全平）  选中集合变化率 %5.1f%%   （%d 次键序置换 × %d 话题）" % (p11 * 100, PERM_TRIALS, len(topics)))
     print("         └ 面板成员变动率          %5.1f%%   （这是排序在工作，不是影响）" % (p10_disp_rate * 100))
     if parity_diff is None:
         print("  PROBE 9  table parity             跳过（找不到 skills/ask/SKILL.md）")
@@ -624,7 +782,8 @@ def report(topics, as_json=False):
     for _lbl, _v in [("PROBE 6 可见", v6_vis), ("PROBE 6 条件性", v6_cond),
                      ("PROBE 7 领域A", v7_a), ("PROBE 7 领域B", v7_b),
                      ("PROBE 8 人格层", v8), ("PROBE 9 表一致", v9),
-                     ("PROBE 10 发言位影响", v10)]:
+                     ("PROBE 10 发言位影响", v10),
+                     ("PROBE 11 键序不变性", v11)]:
         if _v["state"] == "OK":
             _ci = _v["ci"]
             _cis = "[%s, %s]" % (("%.2f" % _ci[0]) if _ci[0] is not None else "?",
