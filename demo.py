@@ -177,7 +177,30 @@ def choose(topic, profile, topic_memory):
     if stat and stat[0][0] >= 2:
         n, cat, label, gods = stat[0]
         _reach("static_route_hit")
-        return gods, f"静态路由表 → {label}（命中 {n} 个关键词）"
+        # **名册是唯一真相**：路由表里可能有**已经不在名册里的人**
+        # （路由表是一份独立的手抄拷贝，见 PROBE 16）。
+        # → 先按名册过滤掉，再按名册补位。
+        # → 补位规则：同一条路由规则里剩下的，按**名册里还没被叫到的人**里
+        #   力量最高的补（并列按 roster_rank）。补不满就少几个人上场——
+        #   **宁可台上有空位，也不要台上有幽灵。**
+        _roster = profile.get("tenGods", {})
+        _picked = [g for g in (gods or []) if g in _roster]
+        if len(_picked) < 3 and _roster:
+            _called = set(_picked)
+            _pool = [k for k in _roster if k not in _called]
+            _pool.sort(key=lambda k: (-_roster[k].get("score", 0),
+                                      _roster[k].get("roster_rank", 999)))
+            for k in _pool:
+                if len(_picked) >= 3:
+                    break
+                _picked.append(k)
+        if _picked:
+            _note = ""
+            _dropped = [g for g in (gods or []) if g not in _roster]
+            if _dropped:
+                _note = ("（路由表点名的 %s 已不在名册，已剔除并按名册补位）"
+                         % "/".join(_dropped))
+            return _picked, f"静态路由表 → {label}（命中 {n} 个关键词）" + _note
 
     # 都没有：按旺/中各取，最强的人先开口
     # 决胜规则必须是**显式值**，不能是「谁先敲字」。

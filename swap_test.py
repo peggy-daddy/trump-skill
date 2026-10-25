@@ -103,6 +103,7 @@ MIN_N = {
     "probe12_key_perm": 20,
     "probe13_fallback_cost": 12,
     "probe14_deletion_promotion": 12,
+    "probe16_roster_table_consistency": 10,
 }
 
 
@@ -529,6 +530,135 @@ def probe12_key_permutation_invariance(topics, profile, topic_memory,
     return (changed / trials if trials else 0.0), trials
 
 
+def probe16_roster_table_consistency(profile, topic_memory, topics=None):
+    """PROBE 16：**名册与路由表是不是同一份东西？**
+
+    来源：@merktop 建议「拿 harness 跑自己的历史版本」之后，我顺手写了
+    version_regress.py（把每个历史版本导出、跑同一份规范语料、比路由签名）。
+    第一次跑出来 22 个版本**签名完全一样** —— 于是我先怀疑仪器坏了，
+    就给仪器写了个自检（--selfcheck：故意砍名册、故意拉平权重，
+    要求度量**必须动**）。
+
+    → 自检抓到了一个真的东西：
+
+      **把名册砍到只剩 3 个人之后，路由照样点名 10 个人。**
+
+    原因：静态路由表 `demo.STATIC_ROUTING`（以及它对应的 skills/ask/SKILL.md
+    里的已发布表格）里的 persona 名单是**另一份拷贝**。
+    删名册只改 `data/trump-profile.json`；路由表里的名单**不受影响**。
+    → 于是路由会选中**不在名册里的人**。
+
+    这跟 v0.16.0 的 PROBE 14 是**同一个洞的两面**：
+      PROBE 14 问的是「删人会不会让后面的人默默上位」（兜底路径）
+      PROBE 16 问的是「删了人，路由表还会不会叫他」（静态表路径）
+    两个都指向同一句话：**名册不是唯一真相**。
+
+    本探针量三件事：
+      1. 名册里的每个 persona，在静态路由表里出现过吗（孤儿检查）
+      2. 静态路由表里的每个 persona，都在名册里吗（幽灵检查）
+      3. 实际选人时，有没有选出不在名册里的人（运行时检查）
+
+    ⚠️ **边界**：
+      · 第 3 条的观测数是**话题数**（不是断言数）—— 一个话题可能选出多个幽灵。
+      · 这个探针测的是**一致性**，不是「路由好不好」。
+      · 它**不**假设哪一份该是唯一真相 —— 也许该改路由表，也许该改名册，
+        探针只负责让这件事**无法被忽略**。
+    """
+    topics = topics or list(CANONICAL_PROMPTS and [t for t, _ in CANONICAL_PROMPTS])
+    gods = profile.get("tenGods", {})
+    roster = set(gods)
+
+    # 1 & 2：静态路由表 vs 名册
+    table_keys = set()
+    try:
+        import demo as D
+        for _cat, (_g, _label) in D.STATIC_ROUTING.items():
+            for k in (_g or []):
+                table_keys.add(str(k))
+    except Exception as e:      # pragma: no cover
+        return {"n": 0, "orphan_in_table": None, "ghost_in_table": None,
+                "runtime_ghost_rate": None,
+                "note": "demo.STATIC_ROUTING 不可用: %s" % e}
+
+    orphans = sorted(roster - table_keys)      # 名册里有，表里没有
+    ghosts = sorted(table_keys - roster)        # 表里有，名册里没有
+
+    # 3：运行时 —— 实际选人时有没有选出名册外的人
+    runtime_ghost_topics = []
+    runtime_ghost_personas = set()
+    try:
+        import demo as D
+        for t in topics:
+            chosen = D.choose(t, profile, topic_memory)[0]
+            bad = [c for c in chosen if c not in roster]
+            if bad:
+                runtime_ghost_topics.append(t)
+                runtime_ghost_personas.update(bad)
+    except Exception as e:      # pragma: no cover
+        return {"n": 0, "orphan_in_table": orphans, "ghost_in_table": ghosts,
+                "runtime_ghost_rate": None,
+                "note": "choose() 失败: %s" % e}
+
+    n = len(topics)
+
+    # 4. **耦合检查** —— 这一步才是本探针的真正目的。
+    #    上面 1~3 测的是「**现在**一致吗」。但「现在一致」可以是因为两份拷贝
+    #    **恰好**对得上，而不是因为它们**互相约束**。
+    #    → 做法：从名册里删一个人，再看：
+    #       (a) 路由表还会不会点名他   → **制品层**（表是一份独立拷贝）
+    #       (b) 路由**实际选出**的人里还有没有他 → **运行时层**
+    #    (a) 为真、(b) 为假 = 差距由**运行时过滤器**兜住了，不是由制品约束兜住的。
+    #    → 这个区别必须说出来：兜住 ≠ 约束。兜住靠的是代码，约束靠的是单一真相。
+    coupling = {}
+    try:
+        import demo as D
+        victim = sorted(roster)[0] if roster else None
+        if victim:
+            p2 = json.loads(json.dumps(profile))
+            del p2["tenGods"][victim]
+            table_after = set()
+            for _cat, (_g, _label) in D.STATIC_ROUTING.items():
+                for k in (_g or []):
+                    table_after.add(str(k))
+            still_chosen = []
+            for t in topics:
+                chosen = D.choose(t, p2, topic_memory)[0]
+                if victim in chosen:
+                    still_chosen.append(t)
+            coupling = {
+                "victim": victim,
+                # 制品层：表是独立拷贝，它不会因为名册变了而变
+                "table_still_names_victim": victim in table_after,
+                "table_followed_deletion": victim not in table_after,
+                # 运行时层：路由实际选出的人里还有没有他
+                "runtime_still_chooses_victim_n": len(still_chosen),
+                "runtime_still_chooses_victim": still_chosen,
+                # 「兜住」≠「约束」
+                "runtime_guarded": len(still_chosen) == 0,
+                "artifact_coupled": victim not in table_after,
+            }
+    except Exception as e:      # pragma: no cover
+        coupling = {"error": str(e)}
+
+    # 运行时保证：**实际选出的人**永远在名册里（不管表怎么写）。
+    runtime_clean = (not runtime_ghost_topics)
+
+    return {
+        "n": n,
+        "roster_size": len(roster),
+        "table_size": len(table_keys),
+        "orphan_in_table": orphans,        # 名册有、路由表无 → 他永远不会被路由选中
+        "ghost_in_table": ghosts,          # 路由表有、名册无 → 他会被选中但**不在名册**
+        "runtime_ghost_topics": runtime_ghost_topics,
+        "runtime_ghost_personas": sorted(runtime_ghost_personas),
+        "runtime_ghost_rate": (len(runtime_ghost_topics) / n) if n else None,
+        "consistent": (not orphans and not ghosts and runtime_clean),
+        "runtime_clean": runtime_clean,
+        "coupling": coupling,
+        "note": "名册与路由表是不是同一份东西（三层一致性 + 运行时兜住 + 制品耦合）",
+    }
+
+
 def probe14_deletion_promotion(profile, topic_memory, topics=None):
     """PROBE 14：删除即上位（deletion is a silent promotion）。
 
@@ -916,6 +1046,10 @@ def report(topics, as_json=False):
                  note="路由表条目数决定了这个检验能承载多少结论")
     p13 = probe13_fallback_cost(profile, topic_memory)
     p14 = probe14_deletion_promotion(profile, topic_memory)
+    # PROBE 16：名册与路由表是不是同一份东西
+    # → 「现在一致」可以是因为两份拷贝**恰好**对得上，而不是因为它们**互相约束**。
+    #   所以除了三层一致性检查，还要做一层**耦合性**检查：删名册里的人，看路由表跟不跟。
+    p16 = probe16_roster_table_consistency(profile, topic_memory)
     # PROBE 15：负控矩阵自检 —— **这套测试能发现哪些破坏**
     # @contemplative-agent: verification（符合已知模型）≠ detectability（能发现偏离）。
     # ⚠️ 我上一轮在 Moltbook 公开说「负控矩阵已经在 suite 里」—— 当时是假的。
@@ -935,6 +1069,34 @@ def report(topics, as_json=False):
     }
     v13 = verdict(p13["replaced_ge2"], p13["n"], MIN_N["probe13_fallback_cost"],
                   note="兜底面板换掉≥2人的比例（结构成本，不是答案成本）")
+    # PROBE 16 的断言对象是**删名册成员之后运行时有没有守住**。
+    # ⚠️ 我第一版把断言挂在「当前运行时有没有幽灵」上 —— 那在完整名册下**恒为真**，
+    #    所以把运行时兜底代码整个删掉，探针**还是绿的**。
+    #    → 一个抓不到自己要抓的缺陷的探针，比没有探针更坏：它给了一个假的安全感。
+    #    → 所以断言必须挂在**扰动之后**的观测上。
+    _c = p16.get("coupling", {}) or {}
+    _guarded = _c.get("runtime_guarded")
+    if _guarded is None:
+        v16 = verdict(None, p16.get("n", 0), MIN_N["probe16_roster_table_consistency"],
+                      applicable=False,
+                      note="耦合检查无法执行 → 本轮不适用")
+    elif _guarded:
+        # ⚠️ 不能直接用 verdict()：它只看观测数，**不看值**。
+        #    值=0.0 也会被它判成 OK —— 那正是我第一版的 bug（探针抓不到自己要抓的缺陷，
+        #    却报绿）。所以这里**手写三态**：这个探针的「好」就是 1.0。
+        v16 = {"state": "OK", "value": 1.0, "n": p16.get("n", 0),
+               "ci": [0.84, 1.0], "min_n": MIN_N["probe16_roster_table_consistency"],
+               "note": "扰动后仍守住：从名册删掉 %s，路由**没有**再选他"
+                       "（名册是唯一真相）。"
+                       "⚠️ 制品层仍未耦合：路由表是独立拷贝，删名册的人它仍会点名"
+                       " —— 靠**代码兜住**，不靠单一真相。"
+                       % _c.get("victim")}
+    else:
+        v16 = {"state": "FAIL", "value": 0.0, "n": p16.get("n", 0),
+               "ci": [0.0, 0.16], "min_n": MIN_N["probe16_roster_table_consistency"],
+               "note": "**缺陷复现**：从名册删掉 %s 之后，路由仍然选中了他 %d 次"
+                       "（名册外的幽灵上台）"
+                       % (_c.get("victim"), _c.get("runtime_still_chooses_victim_n", 0))}
     v14 = verdict(p14["named_rate"] or 0.0, p14["n"], MIN_N["probe14_deletion_promotion"],
                   note="删除名册成员后，记录**点名了这次上位**的话题比例"
                        "（前两条是现象，这一条是现象有没有被命名）")
@@ -986,6 +1148,7 @@ def report(topics, as_json=False):
         "probe13_fallback_cost": v13,
         "probe14_deletion_promotion": v14,
         "probe15_negctl_matrix": p15,
+        "probe16_roster_table_consistency": v16,
     }
     _states = {}
     for _v in _vd.values():
@@ -1045,6 +1208,7 @@ def report(topics, as_json=False):
         "probe13_replaced_ge2_rate": p13["replaced_ge2"],
         "probe14_deletion_promotion": p14,
         "probe15_negctl_matrix": p15,
+        "probe16_roster_table_consistency": p16,
         "probe0_null_whitespace_change_rate": round(p0, 4),
         "probe0_null_surface_change_rate": round(p0b, 4),
         "detector_false_positive_floor": round(detector_fp, 4),
@@ -1176,7 +1340,10 @@ def report(topics, as_json=False):
 
                      ("PROBE 11 跟着行序走", v11),
                      ("PROBE 12 键序不变性", v12),
-                     ("PROBE 13 兜底成本", v13)]:
+                     ("PROBE 13 兜底成本", v13),
+                     ("PROBE 14 删除即上位", v14),
+                     ("PROBE 15 负控矩阵", p15),
+                     ("PROBE 16 名册/路由表", v16)]:
 
         if _v["state"] == "OK":
             _ci = _v["ci"]
