@@ -92,20 +92,49 @@ def mut_profile(tmp):
     json.dump(prof, open(p, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
 
 
-# break class → (说明, 期望退出码, 施加方式)
+# break class → (说明, 期望退出码, 施加方式, **期望在输出里出现的标记**)
 #   施加方式: ("demo.py", fn) 或 ("profile", fn)
+#
+# @nebelkrake: "require the negative control to fail **for the intended reason**, not
+# merely exit nonzero. ... A parse error or test-harness crash should be reported as
+# **inconclusive** for that invariant. Otherwise calibration can turn green because an
+# unrelated failure made the control red."
+#
+# → 所以每一行有两个期望：**退出码** + **理由标记**。
+#   退出码对了但标记不对 = 它是**因为别的原因**红的 → 不算通过。
+#   崩溃（Traceback）= 原因不明 → **INCONCLUSIVE**，不是 PASS。
 ROWS = [
-    ("baseline", "没破坏", 0, None),
-    ("reorder_route_table", "只换路由表里的顺序（选的人一样）", 1, ("demo.py", mut_reorder)),
-    ("swap_persona_in_route", "换掉路由表里的一个人", 1, ("demo.py", mut_swap)),
-    ("profile_changed", "profile 分数变了，golden 未更新", 2, ("profile", mut_profile)),
-    ("restored", "所有破坏还原后", 0, None),
+    ("baseline", "没破坏", 0, None, "无路由漂移"),
+    ("reorder_route_table", "只换路由表里的顺序（选的人一样）", 1,
+     ("demo.py", mut_reorder), "发现"),
+    ("swap_persona_in_route", "换掉路由表里的一个人", 1,
+     ("demo.py", mut_swap), "发现"),
+    ("profile_changed", "profile 分数变了，golden 未更新", 2,
+     ("profile", mut_profile), "[COND]"),
+    ("restored", "所有破坏还原后", 0, None, "无路由漂移"),
 ]
+
+
+def _classify(rc, out, expect, marker):
+    """三态判定：PASS / FAIL / INCONCLUSIVE。
+
+    @nebelkrake 的那条守卫就落在这里：
+    - **崩溃**（Traceback）→ INCONCLUSIVE：失败原因不明，不能算通过，也不能算失败。
+    - 退出码对但**理由标记不对** → FAIL：它是**因为别的原因**红的。
+    - 两者都对 → PASS。
+    """
+    if "Traceback (most recent call last)" in out or "SyntaxError" in out:
+        return "INCONCLUSIVE", "崩溃/语法错误 —— 失败原因不明"
+    if rc != expect:
+        return "FAIL", "退出码与期望不符"
+    if marker and marker not in out:
+        return "FAIL", "退出码对了，但**理由标记**没出现（可能因为别的原因红的）"
+    return "PASS", "按预期的方式红了"
 
 
 def run_matrix():
     results = []
-    for cls, what, expect, mut in ROWS:
+    for cls, what, expect, mut, marker in ROWS:
         with tempfile.TemporaryDirectory(prefix="negctl_") as tmp:
             stage(tmp)
             if mut:
@@ -117,10 +146,11 @@ def run_matrix():
                 else:
                     fn(tmp)
             rc, out = run_smoke(tmp)
-        ok = (rc == expect)
+        status, why = _classify(rc, out, expect, marker)
         results.append({"break_class": cls, "what": what,
                         "expected_exit": expect, "actual_exit": rc,
-                        "pass": ok,
+                        "expect_marker": marker, "marker_seen": bool(marker and marker in out),
+                        "status": status, "pass": status == "PASS", "why": why,
                         "evidence": (out.strip().splitlines() or [""])[-1][:120]})
     return results
 
@@ -131,8 +161,11 @@ def main():
     args = ap.parse_args()
     res = run_matrix()
     n_ok = sum(1 for r in res if r["pass"])
+    n_inc = sum(1 for r in res if r["status"] == "INCONCLUSIVE")
+    n_fail = sum(1 for r in res if r["status"] == "FAIL")
     if args.json:
         print(json.dumps({"rows": res, "passed": n_ok, "total": len(res),
+                          "failed": n_fail, "inconclusive": n_inc,
                           "all_pass": n_ok == len(res),
                           "detectable_breaks": [r["break_class"] for r in res
                                                 if r["break_class"] != "baseline"
@@ -141,12 +174,14 @@ def main():
         return 0 if n_ok == len(res) else 1
     print("[NEGCTL] 负控矩阵 —— 这套测试**能发现哪些破坏**")
     for r in res:
-        flag = "OK " if r["pass"] else "FAIL"
+        flag = {"PASS": "OK  ", "FAIL": "FAIL", "INCONCLUSIVE": "???? "}[r["status"]]
         print(f"  {flag} {r['break_class']:24} {r['what']:32} "
-              f"期望 exit={r['expected_exit']} 实际 exit={r['actual_exit']}")
+              f"期望 exit={r['expected_exit']} 实际 exit={r['actual_exit']}"
+              f"  标记={'✓' if r['marker_seen'] else '✗'}")
         if not r["pass"]:
-            print(f"       {r['evidence']}")
-    print(f"\n[NEGCTL] {n_ok}/{len(res)} 行符合预期")
+            print(f"       {r['why']}：{r['evidence']}")
+    print(f"\n[NEGCTL] {n_ok}/{len(res)} 行按**预期的方式**红了"
+          + (f"（FAIL={n_fail} INCONCLUSIVE={n_inc}）" if (n_fail or n_inc) else ""))
     print(f"[NEGCTL] 可发现的破坏类：{', '.join(r['break_class'] for r in res if r['break_class'] not in ('baseline','restored'))}")
     print("[NEGCTL] ⚠️ 绿灯**只接到这些**上；没列出来的破坏类，这套测试发现不了。")
     return 0 if n_ok == len(res) else 1

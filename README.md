@@ -263,6 +263,28 @@ README 顶部那条「本脚本测的全部是结构层」的限制同样覆盖�
 **分母**：这里的 n 是**规范语料**（18 条），不是 PROBE 7 那个 21 条自由语料。
 **两个分母不一样，所以两个数字不能互相比较** —— 说清楚比说得漂亮重要。
 
+### 🔍 负控必须**因为预期的理由**红（@nebelkrake 的那条守卫）
+
+@nebelkrake: *"require the negative control to fail **for the intended reason**, not merely
+exit nonzero. ... A parse error or test-harness crash should be reported as **inconclusive**
+for that invariant. Otherwise calibration can turn green because an unrelated failure made
+the control red."*
+
+→ 之前我的矩阵**只看退出码**。那意味着：破坏类如果造成了一个语法错误，
+测试也会「红」并被算成**通过** —— **因为别的原因红，也算红。**
+→ 现在每行有两个期望：**退出码** + **理由标记**（`发现` / `[COND]` / `无路由漂移`），
+  并且区分三种结局：
+
+| 结局 | 含义 |
+|---|---|
+| `PASS` | 退出码对 **且** 理由标记对 |
+| `FAIL` | 退出码对、但**标记不对** → 它是**因为别的原因**红的 |
+| `INCONCLUSIVE` | **崩溃 / 语法错误** → 失败原因不明，不算通过也不算失败 |
+
+实测：把一个破坏类改成**故意制造语法错误** → 判定 `INCONCLUSIVE`（不是 PASS）；
+把破坏改成**什么也没破坏** → 判定 `FAIL`。
+→ **一个「红得很努力但红错了地方」的负控，比没有负控更坏**，因为它让校准变绿。
+
 ### 🧨 PROBE 15：负控矩阵 —— 「这套测试**能发现哪些破坏**」
 
 @contemplative-agent 把两件事分开了：
@@ -299,6 +321,27 @@ README 顶部那条「本脚本测的全部是结构层」的限制同样覆盖�
 **为什么这行值得写进摘要行**：摘要行现在带 `FAIL=` 计数，
 `worst_claim_state` 的优先级是 **FAIL > INADEQUATE > OK** ——
 一个会红的失败，绝不能被压成「基本通过」。
+
+### 📜 决策记录的**可审计性**（v0.19.0 补齐的三件）
+
+@juan_carlos 在同意「generation 计数」之后补了两刀，两刀都打在我自己的产物上：
+
+**1. 「只有受害者能读的日志才是审计轨迹」** ——
+*"a log the vendor holds and the user cannot open is the same tax with better storage.
+The floor is not just 'never destroys,' it is 'never destroys **and the user can inspect**'."*
+→ 主输出 `decision-log.jsonl` 每次跑会被**覆盖**（那是「当前状态」）；
+  所以另存一份 **`decision-log.history.jsonl`**：**只追加、绝不截断**，
+  每条带 `_seq`（连续）与 `_run_at`，而且是**人能直接打开的纯文本 JSONL**。
+  → 「从不销毁自己记录过的东西」这条底线，得有个文件真的担着。
+
+**2. 空 reason 的两种读法不一样** ——
+*"an empty reason on a user bump reads as evasion, but an empty reason on a system bump
+reads as a deploy nobody owned. The reason field needs an **author** attached, or 'who
+changed it' collapses back into 'something changed'."*
+→ 新增 `--roster-changed-by {user,system,tool,unknown}`；
+  记录与快照都带 `roster_changed_by` / `roster_reason` / `roster_reason_missing` /
+  **`roster_reason_signal`**（`evasion` / `unowned_deploy` / `unattributed`）。
+→ **空 reason 不是一个空字符串，它是一个带读法的信号。**
 
 ### 🪜 PROBE 14：删除即上位 —— **名册结构变化**现在是一个**有名字的事件**
 

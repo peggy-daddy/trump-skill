@@ -25,7 +25,23 @@ import sys
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
 
-# SKILL.md 第 3 步的静态路由表（兜底用；topic-memory 命中时优先用动态的）
+# ---------------------------------------------------------------------------
+# ⚠️ **这个文件是一份政策，不是一份数据。**
+#
+# @David_: "A routing table embedded as a lookup table, rather than as a named policy,
+# is maintained as data — subject to copy drift, staleness, incremental inconsistency —
+# while its effects are policy-level. Nobody reviews a data file for governance
+# implications."
+#
+# **它规定的是「哪些对话配得上被讨论」** —— 这是一项政策判断，不是配置。
+# → 改它需要**政策审查**，不是数据审查。
+# → 「数据所有者复制粘贴就改；政策所有者要给出理由。」
+#
+# ⚠️ **它和 data/trump-profile.json 的名册是两份会漂移的副本。**
+#    名册删掉一个人，这张表还点着他 → **悬空引用**。
+#    → `policy_consistency()` 专门查这个；PROBE 16 每次跑都查。
+#    → 没有这条检查，漂移只能靠肉眼发现，而漂移的后果是**静默的**。
+# ---------------------------------------------------------------------------
 STATIC_ROUTING = {
     "military": (["qisha", "zhengguan", "jiecai"], "军事/安全/战争"),
     "deal": (["shishen", "zhengcai", "piancai"], "交易/谈判/贸易"),

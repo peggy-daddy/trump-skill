@@ -354,6 +354,8 @@ def build_record(topic, profile, topic_memory, roster_order=None, roster_delta=N
             "roster_changed_at": roster_delta.get("changed_at"),
             "roster_changed_by": roster_delta.get("changed_by"),
             "roster_reason": roster_delta.get("reason"),
+            "roster_reason_missing": roster_delta.get("reason_missing", False),
+            "roster_reason_signal": roster_delta.get("reason_signal", ""),
             "panel_before": list(before),
             "panel_after": list(after),
             "entered": entered,
@@ -387,6 +389,11 @@ def main():
     ap.add_argument("--seed", type=int, default=20261023)
     ap.add_argument("--roster-reason", default="",
                     help="这次名册变更的**理由**（会写进快照的 provenance）")
+    ap.add_argument("--roster-changed-by", default="unknown",
+                    choices=["user", "system", "tool", "unknown"],
+                    help="这次名册变更的**作者**。"
+                         "@juan_carlos: 「reason 字段需要一个 author，"
+                         "否则『谁改的』又塌回『有什么东西变了』。」")
     ap.add_argument("--no-state", action="store_true",
                     help="不读也不写名册快照（用于干净重跑）")
     ap.add_argument("--flatten", action="store_true",
@@ -454,8 +461,19 @@ def main():
         # ⚠️ provenance 描述的是**这次**变更，不是上一次快照的元数据。
         #   命令行给的 --roster-reason 说的就是「当前这一版名册为什么是这样」。
         delta["reason"] = getattr(args, "roster_reason", "") or ""
-        delta["changed_by"] = "cli"
+        delta["changed_by"] = getattr(args, "roster_changed_by", "unknown") or "unknown"
         delta["changed_at"] = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+        # 空 reason 的**两种读法**不一样（@juan_carlos）：
+        #   用户改了但没给理由 = 规避；系统改了但没给理由 = 没人认领的部署。
+        # → 所以「空 reason」不能只是一个空字符串，它得**带上读法**。
+        if not delta["reason"]:
+            delta["reason_missing"] = True
+            delta["reason_signal"] = ("evasion" if delta["changed_by"] == "user"
+                                      else ("unowned_deploy" if delta["changed_by"] == "system"
+                                            else "unattributed"))
+        else:
+            delta["reason_missing"] = False
+            delta["reason_signal"] = ""
         print("[ROSTER] 名册发生变化： removed=%s added=%s weights_changed=%s"
               % (delta["removed"], delta["added"], delta["weights_changed"]))
         if delta["removed"]:
@@ -496,9 +514,37 @@ def main():
                        "gods": profile["tenGods"],
                        "generation": _gen,
                        "changed_at": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
-                       "changed_by": "cli",
-                       "reason": getattr(args, "roster_reason", "") or ""},
+                       "changed_by": getattr(args, "roster_changed_by", "unknown") or "unknown",
+                       "reason": getattr(args, "roster_reason", "") or "",
+                       "reason_missing": not (getattr(args, "roster_reason", "") or ""),
+                       "reason_signal": ("" if (getattr(args, "roster_reason", "") or "")
+                                         else ("evasion"
+                                               if (getattr(args, "roster_changed_by", "unknown") == "user")
+                                               else "unowned_deploy"))},
                       f, ensure_ascii=False, indent=2)
+    # ---- append-only 历史 ----
+    # @juan_carlos: "an append-only log is only an audit trail if the person harmed can
+    # read it — a log the vendor holds and the user cannot open is the same tax with
+    # better storage. The floor is not just 'never destroys,' it is 'never destroys and
+    # the user can inspect.'"
+    # → 所以：**只追加**，而且是**人能直接打开的纯文本 JSONL**（不是二进制、不在别处）。
+    # → 主输出 args.out 每次会被**覆盖**（那是「当前状态」），
+    #   历史必须另存一份**永不截断**的。
+    hist_path = os.path.join(ROOT, "decision-log.history.jsonl")
+    _seq = 0
+    if os.path.exists(hist_path):
+        with open(hist_path, "r", encoding="utf-8") as f:
+            _seq = sum(1 for _ in f)
+    if not args.no_state:
+        with open(hist_path, "a", encoding="utf-8") as f:
+            for r in records:
+                _seq += 1
+                _rec = dict(r)
+                _rec["_seq"] = _seq
+                _rec["_run_at"] = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+                f.write(json.dumps(_rec, ensure_ascii=False) + "\n")
+        print(f"[HIST] 追加 {len(records)} 条到 {os.path.relpath(hist_path, ROOT)}"
+              f"（累计 {_seq} 条，**只追加不截断**）")
     with open(args.out, "w", encoding="utf-8") as f:
         for r in records:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")

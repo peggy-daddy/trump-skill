@@ -1057,13 +1057,20 @@ def report(topics, as_json=False):
     import negctl
     _nc = negctl.run_matrix()
     _n_ok = sum(1 for r in _nc if r["pass"])
+    # @nebelkrake: 负控必须**因为预期的理由**红，而不只是「非零退出」。
+    #   崩溃 = 原因不明 = INCONCLUSIVE（不能算通过，也不能算失败）。
+    _n_fail = sum(1 for r in _nc if r.get("status") == "FAIL")
+    _n_inc = sum(1 for r in _nc if r.get("status") == "INCONCLUSIVE")
+    _p15_state = ("OK" if _n_ok == len(_nc)
+                  else ("FAIL" if _n_fail else "INCONCLUSIVE"))
     p15 = {
-        "state": "OK" if _n_ok == len(_nc) else "FAIL",
+        "state": _p15_state,
         "value": (round(_n_ok / len(_nc), 4) if _nc else None),
         "n": len(_nc), "min_n": len(_nc),
         "ci": [None, None],
         "note": "负控矩阵：每一行是一类破坏。绿灯**只接到这些**上。",
         "rows": _nc,
+        "n_fail": _n_fail, "n_inconclusive": _n_inc,
         "detectable_breaks": [r["break_class"] for r in _nc
                               if r["break_class"] not in ("baseline", "restored")],
     }
@@ -1158,16 +1165,19 @@ def report(topics, as_json=False):
     # FAIL（负控矩阵某行不符预期）> INADEQUATE > OK
     if _states.get("FAIL"):
         worst_claim_state = "FAIL"
+    elif _states.get("INCONCLUSIVE"):
+        worst_claim_state = "INCONCLUSIVE"
     elif _states.get("INADEQUATE"):
         worst_claim_state = "INADEQUATE"
     else:
         worst_claim_state = "OK"
     # @kai_the_familiar: "UNMEASURED needs to survive summarization."
     # → 摘要行必须**同时**带三种状态的计数，且**不能**被压成「基本通过」。
-    summary_line = ("probes=%d | OK=%d INADEQUATE=%d NOT_APPLICABLE=%d FAIL=%d | "
+    summary_line = ("probes=%d | OK=%d INADEQUATE=%d NOT_APPLICABLE=%d FAIL=%d INCONCLUSIVE=%d | "
                     "worst_claim_state=%s | zero_observation=%d"
                     % (len(_vd), _states.get("OK", 0), _states.get("INADEQUATE", 0),
                        _states.get("NOT_APPLICABLE", 0), _states.get("FAIL", 0),
+                       _states.get("INCONCLUSIVE", 0),
                        worst_claim_state, _states.get("NOT_APPLICABLE", 0)))
 
     out = {
@@ -1260,7 +1270,12 @@ def report(topics, as_json=False):
     print("         └ 条件D：权重全平时选中的人 = 文件行序前三？ %s   （%d/%d 兜底观测，%d 个排列）"
           % ("n/a" if p11["cond_D_follows_among_fallback"] is None else "%5.1f%%" % (p11["cond_D_follows_among_fallback"] * 100),
              p11["cond_D_fallback_obs"], p11["cond_D_fallback_obs"], p11["cond_D_permutations"]))
-    print("  PROBE 15 负控矩阵  %d/%d 行符合预期   可发现的破坏类：%s"
+    print("  PROBE 15 负控矩阵  %d/%d 行**按预期的理由**红了%s   可发现的破坏类：%s"
+          % (sum(1 for r in p15["rows"] if r["pass"]), p15["n"],
+             (f"（FAIL={p15['n_fail']} INCONCLUSIVE={p15['n_inconclusive']}）"
+              if (p15["n_fail"] or p15["n_inconclusive"]) else ""),
+             ", ".join(p15["detectable_breaks"])))
+    print("  （旧的打印行）  %d/%d 行符合预期   可发现的破坏类：%s"
           % (sum(1 for r in p15["rows"] if r["pass"]), p15["n"],
              ", ".join(p15["detectable_breaks"])))
     print("         └ ⚠️ 绿灯**只接到这些**上；没列出来的破坏类这套测试发现不了")
