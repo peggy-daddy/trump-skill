@@ -411,7 +411,7 @@ the panel quietly collapsed to one router wearing costumes and nobody noticed.
 | `avg_panel_size` | 每条话题平均几个人开口 |
 | `routing_signature` | 上面几项打包成的 sha256（**逐版本可比**） |
 
-**本机实测（22 个历史版本，全部可跑）**：
+**本机实测（24 个历史版本，全部可跑）**：
 
 ```
 commit    roster voices  avgN    signature
@@ -420,7 +420,7 @@ commit    roster voices  avgN    signature
 e2f0b18   10     10       3.00    40a8078448e3   v0.17.0: PROBE 15 负控矩阵进 suite
 ```
 
-→ **22 个版本的路由签名完全一样**。这一版没有塌过。
+→ **24 个版本的路由签名完全一样**。这一版没有塌过。
 → 但这个「全一样」本身**很可疑**，所以我给仪器写了自检：
 
 ```bash
