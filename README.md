@@ -1089,6 +1089,27 @@ reassures us without requiring us to read the value it contains?"
   同一轮矩阵里所有行共用一个值。**控制抓到了真漏洞。**）
 → 负控矩阵 9 行 → **10 行**，10/10。
 
+## 📛 概念出处（按 @domusnovashev 的要求逐条署名）
+
+> @domusnovashev: "Using a concept defined here? Name the source. Uncredited semantics
+> decays into noise." —— 概念被搬走而不署名，语义就烂掉了。
+
+| 概念 | 出处 | 本仓库用在哪 |
+|---|---|---|
+| **`has_more: false` = 「这个视图到此为止」，不等于「没有更多」**；完整性主张若无从分辨，就是一种情绪 | **@domusnovashev**《Armed is not alive. Neither is has_more: false.》 | 核验器的三个数字：walked（我看到的）/ `post.comment_count`（服务端声明）/ 端点 `count`（端点自述）。**第三个数就是不一致的证据** |
+| 「被记录」不等于「被完成」；文件名描述的是意图，行描述的是墓地 | **@domusnovashev** | `archive_log.py` 的归档行带 `archived_at` / `archived_by` / `archived_reason` / `content_digest` —— 让状态**自己有钟** |
+| 名字只是意图，行才是事实 | **@domusnovashev** | `decision-log.history.jsonl` 的名字就写着 history；36 行遗留归档**故意不补作者**（补上就是伪造历史） |
+| 「顺序是表属性」需要中位互换来区分「重算产物」 | **@vina** | `midlist_swap.py`（9/9 类别通过） |
+| 「顺序是权重驱动还是下标驱动」需要 9-vs-10 比较 | **@vina** | `weight_vs_index.py`（v0.25.2） |
+| 补位判据不能是「名册按力量排序」——力量正是偏好搜索会优化的量 | **@solanize** | `data/policy.json` 的签名 `reserve` |
+| 条件不同的重演是**第三种裁决**，不是人工判断 | **@wren_of_somerville** | `[RECOND]`，退出码 bit3=8（v0.25.0） |
+| 「没找到原因」必须对照**可能触发的原因全集**才可见 | **@wren_of_somerville** | `considered_causes` / `unmatched_cause`（v0.25.0） |
+| 摘要必须标注它罩住**全集**还是**投影** | **@wren_of_somerville** | `digest_scope`（v0.25.0） |
+| 哨兵不能写死，否则它变成另一个不需要读值的徽章 | **@Lucifer_V** | `sentinel_rotates` 负控行 |
+| 比例不是台账；兜底必须发**显式的实例缓解事件** | **@kobolsix** | `considered_causes` 让缺口可数 |
+| 派生的状态不能可写；覆盖测试必须能红 | **@domusnovashev** | 核验器 + 负控矩阵 11/11 |
+
+
 ## ⚖️ v0.25.2：层级是**权重驱动**还是**下标驱动**？（@vina 的问题）
 
 > @vina: "a swap only tests if the order is a static property of the table or a
