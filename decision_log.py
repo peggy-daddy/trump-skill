@@ -607,8 +607,123 @@ def record_hash(rec):
     return hashlib.sha256(body.encode()).hexdigest()[:12]
 
 
+class _TracedRow(dict):
+    """**记录核验器到底读了哪些字段**（@wren: 「把核验器倒着跑，数它从不读的字段」）。
+
+    → 包装记录行，任何 `row.get(x)` / `row[x]` 都会被记下来。
+    → 跑完之后：「记录里有的字段，核验器一个都没碰过」= **未被核验的字段**。
+    → 那张清单是版本之间最诚实的 diff，也是**给一个还不存在的审计者的声明**。
+    """
+    __slots__ = ("seen",)
+
+    def __init__(self, data, seen):
+        super().__init__(data)
+        self.seen = seen
+
+    def get(self, k, default=None):
+        self.seen.add(k)
+        return super().get(k, default)
+
+    def __getitem__(self, k):
+        self.seen.add(k)
+        return super().__getitem__(k)
+
+    def __contains__(self, k):
+        self.seen.add(k)
+        return super().__contains__(k)
+
+
+# 每一根轴需要记录里有哪些字段才算「这一行在这一轴上**可比较**」。
+# → 期望比较数 = Σ行 Σ轴 [该行具备该轴所需字段]
+# → 实际比较数 = 实际跑过的轴次数
+# → **两者的差就是「该比而没比」**（@wren: 「expected, compared, refused」三个数，
+#   两个说不清第三个的故事：欠一个 refusal 和欠一次没做的比较不是一回事）。
+AXIS_FIELDS = {
+    "integrity": ("hash",),
+    "prov": ("policy_digest", "eligible_digest", "code_sha"),
+    "order": ("checked_at",),
+    "recond": ("policy_digest", "eligible_digest", "corpus_digest", "profile_hash"),
+    "cond": ("policy_digest", "profile_hash", "weights", "roster_order"),
+    "diff": ("policy_digest", "topic", "chosen", "source"),
+}
+# ---- **同源比较检测器**（@wren: 「比较的两个操作数若落在同一个来源上，
+#   那就是自证，不该等到相邻的运气才发现」）----
+# → 每一根轴的两边分别打上**来源标签**。
+# → 两边同源 = 这根轴是**同义反复**：它在拿记录的一部分和记录的另一部分对账。
+# → 比如 cond 轴拿「记录自述的名册序」和「用记录里的权重重建出的名册序」对账
+#   —— 两边都来自记录 → **权重自权重重建**就是这一类。
+AXIS_OPERAND_SOURCES = {
+    "integrity": ("record.hash", "recomputed(record)"),
+    "prov": ("record.provenance", "disk.policy"),
+    "order": ("record.checked_at", "ledger.promoted_at"),
+    "recond": ("record.conditions_digest", "disk.current"),
+    "cond": ("record.roster_order", "reconstructed(record)"),
+    "diff": ("record.chosen", "recomputed.decide"),
+}
+PRECOMMIT_PATH = os.environ.get("PROMISE_LEDGER") or os.path.join(
+    ROOT, "refs", "precommit.jsonl")
+
+
+def precommit(ledger_path):
+    """**事前承诺行**（@wren: 「把期望写成一个带日期的行，放在跑之前」）。
+
+    → 现在 [CHECKS] 是**事后**清点：跑完自己数自己做了几次比较。
+      那还是**作者对自己行为的叙述**——叙述可以事后编。
+    → 这一行在跑之前写下：期望比较数、记录条数、记录文件摘要、时间戳。
+    → 跑完之后核验器把这次结果和**那行承诺**做 join：
+      差多少、是不是记录变了、是不是根本没承诺过。
+    → 「没有承诺行」本身就是结论：**这一轮只是自述**。
+    """
+    rows = [json.loads(l) for l in open(ledger_path, encoding="utf-8") if l.strip()]
+    schema = sorted({k for r in rows for k in r})
+    eligible = {ax: sum(1 for r in rows if all(f in r for f in fs))
+                for ax, fs in AXIS_FIELDS.items()}
+    expected = sum(eligible.values())
+    with open(ledger_path, "rb") as f:
+        digest = hashlib.sha256(f.read()).hexdigest()[:16]
+    row = {
+        "ts": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "file": os.path.basename(ledger_path),
+        "rows": len(rows),
+        "expected_comparisons": expected,
+        "eligible_per_axis": eligible,
+        "record_digest": digest,
+        "contract": {ax: list(fs) for ax, fs in AXIS_FIELDS.items()},
+        "checker_version": code_sha(),
+    }
+    os.makedirs(os.path.dirname(PRECOMMIT_PATH), exist_ok=True)
+    with open(PRECOMMIT_PATH, "a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    print("[PROMISE] 已写下事前承诺行 →", PRECOMMIT_PATH)
+    print("[PROMISE] 记录", row["rows"], "条；期望比较", expected, "次；",
+          "记录摘要", digest, "；时间", row["ts"])
+    return row
+
+
+def load_precommit(ledger_path):
+    """取最近一条**对得上这个记录文件摘要**的承诺行。"""
+    if not os.path.exists(PRECOMMIT_PATH):
+        return None
+    rows = []
+    for l in open(PRECOMMIT_PATH, encoding="utf-8"):
+        if l.strip():
+            try:
+                rows.append(json.loads(l))
+            except Exception:
+                pass
+    if not rows:
+        return None
+    want = os.path.basename(ledger_path)
+    for r in reversed(rows):
+        if r.get("file") == want:
+            return r
+    return None
+
+
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--precommit", default=None,
+                    help="**只**写事前承诺行（期望比较数），不跑核验")
     ap.add_argument("--out", default=os.path.join(ROOT, "decision-log.jsonl"))
     ap.add_argument("--permutations", type=int, default=0)
     ap.add_argument("--verify", default=None,
@@ -635,8 +750,23 @@ def main():
     gods = profile["tenGods"]
     base_order = list(gods.keys())
 
+    if args.precommit:
+        precommit(args.precommit)
+        return 0
     if args.verify:
         rows = [json.loads(l) for l in open(args.verify, encoding="utf-8") if l.strip()]
+        # ---- [UNREAD] **核验器到底读了哪些字段**（@wren 的第 1 条）----
+        # → 把每一行包成 _TracedRow：任何 row.get(x) / row[x] 都被记下。
+        # → 跑完对照「记录里有的字段」，得到**从未被读过的字段清单**。
+        _seen_fields = set()
+        rows = [_TracedRow(r, _seen_fields) for r in rows]
+        _schema = sorted({k for r in rows for k in r})
+        # ---- [CHECKS] **事前承诺 vs 实际执行**（@wren 的第 1、2 条）----
+        _promise = load_precommit(args.verify)
+        _axis_eligible = {ax: sum(1 for r in rows if all(f in r for f in fs))
+                          for ax, fs in AXIS_FIELDS.items()}
+        _expected_total = sum(_axis_eligible.values())
+        _axis_done = {ax: 0 for ax in AXIS_FIELDS}
         agree = disagree = cond_bad = recond_bad = unver_bad = 0
         # ---- [CHECKS] **这一轮真的做了多少次比较**（@wren 的第 2 条）----
         # → "exit 0 with no comparison made" 与 "verified with nothing read" 形状相同：
@@ -685,6 +815,7 @@ def main():
         _signed_el = list(_pol_now.get("eligible_roster") or [])
         _ledger = load_ledger()
         for row in rows:
+            _axis_done["prov"] += 1
             if "policy_digest" not in row:
                 legacy += 1
                 continue
@@ -730,6 +861,7 @@ def main():
             _pd = row.get("policy_digest")
             _ca = row.get("checked_at")
             _cmp["order"] += 1
+            _axis_done["order"] += 1
             if not _pd or not _ca:
                 continue
             _led_e = _ledger.get(_pd) or {}
@@ -766,6 +898,7 @@ def main():
         for row in rows:
             _h_rec = row.get("hash")
             _cmp["integrity"] += 1
+            _axis_done["integrity"] += 1
             if not _h_rec:
                 # 旧记录没有自述摘要 → **不知道**，不是**被改过**。
                 # （同样不能拿「没查过」冒充「查过了没问题」→ 计入 legacy 桶）
@@ -824,6 +957,7 @@ def main():
             #   字段**存在但不同** = 「漂移」。两件事不能混。
             # → 修法：缺字段 → 不参与比较（但计入 legacy 桶，读者知道它没被查过）。
             _cmp["recond"] += 1
+            _axis_done["recond"] += 1
             _row_data = {k: v for k, v in _row_data.items() if k in row}
             _diff_fields = [k for k, v in _row_data.items()
                             if _digest({k: v}) != _digest({k: _cur_data.get(k)})]
@@ -899,6 +1033,14 @@ def main():
                         p["tenGods"][k]["score"] = v
                         _applied += 1
                 # 条件一致性单独判：条件不一致 ≠ 路由不一致。
+                # ⚠️ v0.30.0 修：**这一轴以前从不被计数**。
+                #   → [CHECKS] 里 cond 永远是 0，看起来像「这轴没做」，
+                #     但实际上它**做了** —— 只是没报数。
+                #   → 于是「预期比较数 vs 实际比较数」永远差着一整根轴，
+                #     差多少全凭读者自己猜。
+                #   → 现在每一轴**真的比了一次**就记一次。
+                _cmp["cond"] += 1
+                _axis_done["cond"] += 1
                 _h = hashlib.sha256(
                     json.dumps(p["tenGods"], ensure_ascii=False, sort_keys=True).encode()
                 ).hexdigest()[:12]
@@ -928,6 +1070,7 @@ def main():
                           "reconstruction_used_roster:",
                           json.dumps(list(p["tenGods"].keys()), ensure_ascii=False))
                 _cmp["diff"] += 1
+                _axis_done["diff"] += 1
                 mine = decide(row["topic"], p, topic_memory)
                 if mine["chosen"] == row["chosen"] and mine["source"] == row["source"]:
                     agree += 1
@@ -965,6 +1108,50 @@ def main():
         print("[CHECKS] 逐行比较了", _rows_examined, "条；跳过：",
               " / ".join(f"{k}={v}" for k, v in _rows_skipped.items() if v),
               "（跳过**不算通过**，只是没比）")
+        # ---- [CHECKS] **三个数：expected / compared / refused** ----
+        # @wren: 「每一轮都要报三个数：expected、compared、refused。
+        #   两个数说不清三个数的故事 —— 欠一个 refusal 和欠一次没做的比较不是一回事。」
+        _compared_total = sum(_axis_done.values())
+        _refused_total = _rows_skipped.get("unverifiable", 0)
+        print(f"[CHECKS] 三个数：expected={_expected_total} "
+              f"compared={_compared_total} refused={_refused_total}"
+              f"（shortfall={_expected_total - _compared_total}）")
+        for _ax in sorted(AXIS_FIELDS):
+            _short = _axis_eligible[_ax] - _axis_done[_ax]
+            if _short:
+                print(f"[CHECKS] 轴 {_ax}：可比较 {_axis_eligible[_ax]} 行，"
+                      f"实际比较 {_axis_done[_ax]} 次，**欠 {_short} 次**")
+        # ---- [PROMISE] **事前承诺 vs 实际执行**（无需攻击者也能看出差别）----
+        if _promise is None:
+            print("[PROMISE] **没有事前承诺行** —— 这一轮只是**自述**，"
+                  "读者只能相信作者自己数的比较数。")
+        else:
+            with open(args.verify, "rb") as _f:
+                _now_digest = hashlib.sha256(_f.read()).hexdigest()[:16]
+            _p_exp = _promise.get("expected_comparisons")
+            print(f"[PROMISE] 承诺行 ts={_promise.get('ts')} "
+                  f"expected={_p_exp} rows={_promise.get('rows')} "
+                  f"digest={_promise.get('record_digest')}")
+            print(f"[PROMISE] 本轮实际 compared={_compared_total} "
+                  f"refused={_refused_total}；承诺−实际 = "
+                  f"{(_p_exp - _compared_total) if isinstance(_p_exp, int) else '?'}")
+            if _promise.get("record_digest") != _now_digest:
+                print("[PROMISE] ⚠ 记录文件摘要与承诺时**不同** → "
+                      "这一轮不能与那条承诺做 join（记录变过）")
+        # ---- [UNREAD] **核验器从不读的字段**（@wren 的第 1 条）----
+        _unread = [k for k in _schema if k not in _seen_fields]
+        print(f"[UNREAD] 记录里共有 {len(_schema)} 个字段，"
+              f"核验器读了 {len(_schema) - len(_unread)} 个，"
+              f"**从未读过 {len(_unread)} 个**：{_unread}")
+        # ---- [TAUTOLOGY] **同源比较**：拿记录的一部分和记录的另一部分对账 ----
+        _same = [ax for ax, (a, b) in AXIS_OPERAND_SOURCES.items()
+                 if a.split("(")[0] == b.split("(")[0]
+                 or (a.startswith("record") and b.startswith("reconstructed"))]
+        print(f"[TAUTOLOGY] 同源比较 {len(_same)} 根轴：{_same}"
+              f"（这些轴不能自证；它们证明的是**内部一致**，不是**外部正确**）")
+        for _ax in _same:
+            _a, _b = AXIS_OPERAND_SOURCES[_ax]
+            print(f"[TAUTOLOGY]   {_ax}: {_a} vs {_b}")
         if cond_bad:
             print(f"[COND] 条件不一致 {cond_bad} 条 —— 这些**不是**路由分歧，"
                   f"是核对方用错了条件。")

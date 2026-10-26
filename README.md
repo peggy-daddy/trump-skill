@@ -1565,3 +1565,110 @@ KeyError: '__NOT_IN_PROFILE__'
   **没有独立凭证**，只能靠 diff 看。
 - `slot_override.py` 的结论是**关于当前这张表**的。
   表一换，结论要重跑 —— 探针能跑，**但结论不是资产**。
+
+---
+
+## 🚨 v0.30.0：@wren 的三条 —— **事前承诺**、**未读字段清单**、**三个数**
+
+> "Pre-committing the comparison count: derive the expectation from data the record
+> already carries — row count times the per-axis contract — and write it as a dated
+> row BEFORE the run, not as a sentence the run prints about itself. A count printed
+> after the fact is still the author's narration; a count written before is a
+> falsifiable claim with a timestamp."
+> — @wren
+
+> "The unread-field list is enumerable today, not owed: instrument every field read
+> in the verifier with a source tag, run the corpus once, emit two lists — fields
+> never touched, and comparisons whose two operands resolve to the same source."
+> — @wren
+
+> "Three numbers every run: expected, compared, refused. Two cannot tell the story
+> of three."
+> — @wren
+
+### 0. 先说结论：**我自己的表里有一整根轴从不被计数**
+
+把「预期比较数」按每根轴的字段契约算出来，跟实际执行数一减，**shortfall = 180**：
+`cond` 轴**每一行都够格比较，却一次都没被记过数**。
+→ 不是这轴没做 —— 它**做了**，只是**没报数**（`[CHECKS]` 里 cond 永远是 0）。
+→ 后果：「预期 vs 实际」的差**永远差着一整根轴**，差多少全凭读者猜。
+
+**修法**：每一轴**真的比了一次**就记一次（`_cmp` + `_axis_done`），并且
+**契约字段改成这轴真正读的字段**（`cond` 轴读的是 `profile_hash`/`weights`/`roster_order`，
+不是我一开始以为的 `conditions`）。
+
+### 1. 📌 **事前承诺行**（`decision_log.py --precommit`）
+
+```bash
+python3 decision_log.py --precommit decision-log.jsonl   # 跑之前写下承诺
+python3 decision_log.py --verify   decision-log.jsonl    # 跑之后做 join
+```
+
+承诺行写进 `refs/precommit.jsonl`，含：**时间戳**、记录条数、**每轴可比较行数**、
+**期望比较总数**、**记录文件摘要**、契约表、核验器版本。
+
+跑完核验器把结果和那行承诺 join：
+
+```
+[PROMISE] 承诺行 ts=... expected=1080 rows=180 digest=db5a3c7001f20570
+[PROMISE] 本轮实际 compared=1080 refused=0；承诺−实际 = 0
+```
+
+→ **没有承诺行时，核验器会明说**：「这一轮只是**自述**，读者只能相信作者自己数的比较数。」
+→ 记录文件摘要变了 → **拒绝 join**（记录变过，不能拿旧承诺充数）。
+
+### 2. 🧾 **未读字段清单**（`[UNREAD]`）
+
+每一行记录被包成 `_TracedRow`（dict 子类）→ 任何 `row.get(x)` / `row[x]` 都被记下。
+跑完对照「记录里有的字段」，得到**从未被读过的字段**：
+
+```
+[UNREAD] 记录里共有 31 个字段，核验器读了 15 个，**从未读过 16 个**：
+['candidates', 'checker_version', 'chosen_digest', 'chosen_index', 'conditions',
+ 'considered_causes', 'cutoff', 'digest_scope', 'dynamic_best_hits', 'permuted',
+ 'production_reason', 'route_fired', 'rule', 'seed', 'tie_break', 'unmatched_cause']
+```
+
+→ 这张清单现在是**可复现的**，不是「我记得我大概都查了」。
+→ 顺带暴露一件事：**核验器查的是「裁决」，不查「理由」** ——
+  `rule` / `cutoff` / `tie_break` / `production_reason` 这些**解释性字段一个都没读**。
+→ 被读过的字段里，`chosen` 和 `source` 在（那是结果），`candidates` 不在
+  （**记录自称的候选集从来没被核过**）。
+
+### 3. 🪞 **同源比较检测**（`[TAUTOLOGY]`）
+
+每一轴的两边打**来源标签**；两边同源 = 这根轴在拿记录的一部分和记录的另一部分对账：
+
+```
+[TAUTOLOGY] 同源比较 1 根轴：['cond']
+[TAUTOLOGY]   cond: record.roster_order vs reconstructed(record)
+```
+
+→ `cond` 轴拿「记录自述的名册序」对「**用记录里的权重重建出来的**名册序」
+→ 两边都来自记录 → 它证明的是**内部一致**，不是**外部正确**。
+→ 这是 @wren 点名的那个形状（weights-rebuilt-from-weights）——
+  **现在它是被检测出来的，不是被撞见的**。
+
+### 4. 🧪 负控（`promise_negctl.py`）
+
+| 行 | 场景 | 断言 |
+|---|---|---|
+| A 对照 | 同一份日志 | `shortfall = 0`，退出码 0 |
+| B 负控 | **由另一版代码写出的日志**（`refs/fixture_other_code_log.jsonl`） | `shortfall = 24`，点名 `cond`/`diff` 两根轴「欠比较」，**且摘要对得上**（文件没被改过） |
+
+→ B 行的意义：**日志文件没被动过**，shortfall 归因于「这份记录是别的代码写的」，
+  **不是**归因于「有人篡改」→ 这就是「**无需攻击者也能看出差别**」的形状。
+
+### 5. 🩸 顺带解决的一个旧坑：`decision-log.jsonl` 里 12 条 drifted 记录
+
+那 12 条是旧版代码写的 → `code_sha` 对不上 → **每一行都跳过 cond/diff** → 它们**永远**不可核。
+→ 现在用当前代码重新生成日志（`--permutations 14` → 180 条），
+  **180/180 一致，shortfall = 0，退出码 0**。
+→ 旧的那 12 条留作 `refs/fixture_other_code_log.jsonl` 当负控素材。
+
+### 6. ⚠️ 这一版**没有**解决的
+- **承诺行还不是「事前」到极致**：它由 `--precommit` 这个**独立调用**写下，
+  但**还没人保证**调用者在跑之前真的调了它 → 缺的是「不承诺就不许声称通过」的闸门。
+- `cond` 轴的同源问题**只是被检测出来**，**没被消除** ——
+  真正的修法是让核验器从**磁盘**重建名册，而不是从记录里的 `roster_order` 重建。
+- `STATIC_ROUTING` / 豁免表**仍然没签名**（@wren 的另一条）。
