@@ -191,6 +191,37 @@ def load_policy():
         return {}
 
 
+def corpus_digest(topic_memory=None):
+    """**语料摘要** —— 记录必须钉住「当时跑的是哪份语料」。
+
+    @wren: "any digest over a served projection is a digest of the request.
+    Either the digest covers the set, or the reader has to label the view."
+
+    → 我原来的 `conditions_digest` 只覆盖了**名册/权重/策略/资格集**，
+      也就是「路由的配置**，**没覆盖路由读的语料**（data/topic-memory.json）。
+      → 实测后果（v0.24.0 补）：把语料里的 matched_keywords 改掉，
+        **记录本身一个字节都没动**（记录自述的 hash 仍然对得上），
+        但重算出来的选中集合**变了** → 核验器判「路由分歧」，
+        **并把责任指向了记录**。
+      → 真实情况是：**语料变了，记录没变**。
+
+    → 修法：语料摘要进 `conditions_digest`，语料变了 → **[RECOND]**
+      （重演条件不同，第三种裁决），**不是** [DIFF]（路由分歧）。
+      → 判错的代价：把「语料更新了」误判成「路由出 bug」= 假阳性事故。
+    """
+    if topic_memory is None:
+        try:
+            with open(os.path.join(ROOT, "data", "topic-memory.json"),
+                      encoding="utf-8") as f:
+                topic_memory = json.load(f)
+        except Exception:
+            topic_memory = {}
+    return _digest({
+        "topics": topic_memory.get("topics") or [],
+        "updated_at": topic_memory.get("updated_at"),
+    })
+
+
 def policy_digest(policy=None):
     p = load_policy() if policy is None else policy
     return _digest(p) if p else None
@@ -499,6 +530,9 @@ def build_record(topic, profile, topic_memory, roster_order=None, roster_delta=N
     _pol = load_policy()
     rec["policy_digest"] = policy_digest(_pol)
     rec["eligible_digest"] = eligible_digest(_pol)
+    # ---- 语料摘要：路由读的**语料**也是条件的一部分 ----
+    # 没有它，语料一变 → 核验器把责任指向记录（假阳性）。
+    rec["corpus_digest"] = corpus_digest(topic_memory)
     rec["eligible_set"] = list(profile["tenGods"].keys())
     rec["code_sha"] = code_sha()
     rec["seed"] = seed
@@ -523,6 +557,7 @@ def build_record(topic, profile, topic_memory, roster_order=None, roster_delta=N
         "weights": rec.get("weights"),
         "policy_digest": rec["policy_digest"],
         "eligible_digest": rec["eligible_digest"],
+        "corpus_digest": rec.get("corpus_digest"),
     }
     rec["conditions_digest_data"] = _digest(_cond_data)
     rec["conditions_digest"] = _digest(dict(_cond_data, code_sha=rec["code_sha"]))
@@ -545,9 +580,25 @@ def build_record(topic, profile, topic_memory, roster_order=None, roster_delta=N
     # @wren: "a mutable status with no timestamp is a verdict without a clock."
     rec["checked_at"] = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
     rec["checker_version"] = rec["code_sha"]
-    body = json.dumps({k: v for k, v in rec.items() if k != "hash"}, ensure_ascii=False, sort_keys=True)
-    rec["hash"] = hashlib.sha256(body.encode()).hexdigest()[:12]
+    rec["hash"] = record_hash(rec)
     return rec
+
+
+def record_hash(rec):
+    """**记录自己的摘要** —— 覆盖除 `hash` 以外的全部字段。
+
+    ⚠️ 必须在**所有字段都写完之后**才调用。
+    → v0.24.0 补：本函数原来是在 build_record 里内联算的，
+      而调用方（`--permutations` 分支）在 build_record **返回之后**
+      才补写 `permuted: True` → **那 36 条置换记录的 hash 是过期的**。
+      → 实测：新加的 [INTEGRITY] 轴把 36 条全判为「自己都不认自己的摘要」。
+      → 真因不是记录被改，而是**写入方自己算完摘要后又改了记录**。
+      → 这正是 @wren 说的那个病：
+        「a claim the issuer never re-checks after amending」= 权利，不是证据。
+    """
+    body = json.dumps({k: v for k, v in rec.items() if k != "hash"},
+                      ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(body.encode()).hexdigest()[:12]
 
 
 def main():
@@ -602,6 +653,10 @@ def main():
             "weights": {k: g.get("score", 0) for k, g in _cur_prof["tenGods"].items()},
             "policy_digest": _cur_pol_d,
             "eligible_digest": _cur_el_d,
+            # ---- 语料摘要（v0.24.0 补）----
+            # 少了这一项：语料变了 → 重算结果变了 → 核验器把责任指向记录。
+            # 有了它：语料变了 → 字段不同 → [RECOND]（条件不同，不是路由分歧）。
+            "corpus_digest": corpus_digest(topic_memory),
         }
         # ---- provenance 轴（第三根轴，退出码 bit2 = 4）----
         # @solanize 的两条可测条件，在这里变成**闸门**而不是原则：
@@ -645,8 +700,92 @@ def main():
                       "signed:", _signed_pol_d,
                       "note:", "该策略**没有提升记录** → 未经授权的政策，"
                                "这一轮应判为无效变体，而不是新能力")
-        # ---- [RECOND] 重演条件不同（第三种裁决）----
+        # ---- [ORDER] **因果顺序**：授权必须**早于**裁决 ----
+        # @wren: "cause-before-verdict becomes checkable when the cause carries an
+        # authorization stamp a reader can compare against the verdict time."
+        # → 台账里每条提升记录有 `promoted_at`（授权时间），
+        #   记录里有 `checked_at`（裁决时间）。
+        # → **两者都没被比较过** —— 实测：把一条记录的 checked_at 改成
+        #   早于提升时间，核验器**照样 exit 0**（v0.24.0 补）。
+        # → 后果：一条「在授权之前就发出的裁决」看起来和授权之后发出的**一样**。
+        #   哈希只说「用了什么」，台账说「谁允许的、什么时候允许的」，
+        #   但**没人把这两者放在同一根时间轴上对账** → 顺序不可见。
+        order_bad = 0
         for row in rows:
+            _pd = row.get("policy_digest")
+            _ca = row.get("checked_at")
+            if not _pd or not _ca:
+                continue
+            _led_e = _ledger.get(_pd) or {}
+            _pa = _led_e.get("promoted_at") or _led_e.get("signed_at")
+            if not _pa:
+                continue
+            try:
+                _t_v = datetime.datetime.fromisoformat(str(_ca))
+                _t_p = datetime.datetime.fromisoformat(str(_pa))
+            except Exception:
+                continue
+            if _t_v.tzinfo is None:
+                _t_v = _t_v.astimezone()
+            if _t_p.tzinfo is None:
+                _t_p = _t_p.astimezone()
+            if _t_v < _t_p:
+                order_bad += 1
+                print("[ORDER]", row.get("topic"),
+                      "field=checked_at",
+                      "verdict_at:", _ca,
+                      "promoted_at:", _pa,
+                      "authorized_by:", _led_e.get("promoted_by"),
+                      "→ **裁决早于授权** → 这条记录的授权不成立")
+        # ---- [INTEGRITY] 记录**自述的 hash** 必须能被重算出来 ----
+        # → 我之前把 hash 写进记录，就当它是个防篡改标记。
+        #   **但核验器从来没有重算过它。**
+        #   实测：把任意字段（哪怕 checked_at）改掉而不重算 hash，
+        #   核验器**照样 exit 0** —— 因为它只重算路由结果，
+        #   从不重算记录自己的摘要（v0.24.0 补）。
+        # → 后果：hash 是一个**只有写入方能看见、读者永远读不到**的字段
+        #   —— 按 @wren 的标准，这是一个**权利（entitlement）**，不是观测。
+        integrity_bad = 0
+        integrity_legacy = 0
+        for row in rows:
+            _h_rec = row.get("hash")
+            if not _h_rec:
+                # 旧记录没有自述摘要 → **不知道**，不是**被改过**。
+                # （同样不能拿「没查过」冒充「查过了没问题」→ 计入 legacy 桶）
+                integrity_legacy += 1
+                continue
+            _body = json.dumps({k: v for k, v in row.items() if k != "hash"},
+                               ensure_ascii=False, sort_keys=True)
+            _h_now = hashlib.sha256(_body.encode()).hexdigest()[:12]
+            if _h_now != _h_rec:
+                integrity_bad += 1
+                print("[INTEGRITY]", row.get("topic"),
+                      "field=hash",
+                      "recorded:", _h_rec,
+                      "recomputed:", _h_now,
+                      "→ 记录**自己都不认自己的摘要** → 这条记录被改过")
+        # ---- [RECOND] 重演条件不同（第三种裁决）----
+        # ⚠️ **「条件漂移」不等于「路由分歧」**（v0.24.0 修）
+        # → 以前这个循环和「重算路由」的循环是**分开**的，
+        #   于是同一条记录会同时拿到两个**互相矛盾**的裁决：
+        #   「[RECOND] 你不是在同样的条件下重演」**和**
+        #   「[DIFF] 路由分歧（重算选的人不一样）」。
+        # → 实测（语料漂移）：48 条全部同时报 RECOND 和 DIFF，exit=9。
+        #   → 这是**假指控**：路由没有分歧，是**语料变了**，
+        #     而核验器把责任指向了路由。
+        #
+        # ⚠️ **但不是所有漂移都能赊销 DIFF** —— 区别在于「重算用的输入从哪来」：
+        #   · **从记录里来的**（roster_order / weights）：
+        #     重算**就是拿记录里的条件跑的** → 重算与记录不可复现
+        #     = 对记录的真实指控 → [DIFF] **必须保留**。
+        #   · **从磁盘来的**（语料 / 策略 / 资格集 / 代码版本）：
+        #     重算用的是**当前**的文件，不是记录时的那些 →
+        #     结果不同**不能**归因于记录 → [DIFF] 必须**赊销**，
+        #     只留 [RECOND]（条件不同）。
+        # → v0.24.0 修的就是第二类（语料）。
+        #   第一类保留 → 负控矩阵的 tamper_both 仍然报 DIFF（11 = 1|2|8）。
+        _drifted_disk = set()      # 磁盘侧漂移 → 赊销 DIFF
+        for _i, row in enumerate(rows):
             if "conditions_digest" not in row:
                 continue
             _rd = row.get("conditions_digest_data")
@@ -658,25 +797,64 @@ def main():
                 "weights": row.get("weights"),
                 "policy_digest": row.get("policy_digest"),
                 "eligible_digest": row.get("eligible_digest"),
+                "corpus_digest": row.get("corpus_digest"),
             }
+            # ⚠️ **只比较记录里真的存在的字段**（v0.24.0 修）
+            # → 旧记录没有 `corpus_digest` 这个字段。
+            #   旧写法把 `row.get(...)` 的 None 当成「记录里的值」，
+            #   于是 **None != 当前摘要** → 每一条旧记录都被判「条件漂移」。
+            # → 这是**假阳性**：字段**不存在** = 「不知道」，
+            #   字段**存在但不同** = 「漂移」。两件事不能混。
+            # → 修法：缺字段 → 不参与比较（但计入 legacy 桶，读者知道它没被查过）。
+            _row_data = {k: v for k, v in _row_data.items() if k in row}
             _diff_fields = [k for k, v in _row_data.items()
                             if _digest({k: v}) != _digest({k: _cur_data.get(k)})]
             if _diff_fields:
                 recond_bad += 1
+                # 只有**磁盘侧**的漂移才能赊销 [DIFF]。
+                # -> 「磁盘侧」= 重算用的是**当前**的文件（语料/策略/资格集），
+                #   而不是记录时的那一份 -> 结果不同**不能**归因于记录。
+                # -> 「记录侧」（roster_order/weights）：重算**就是拿记录里的条件跑的**
+                #   -> 复现不了 = 对记录的**真实**指控 -> [DIFF] 必须保留。
+                _DISK_SIDE = ("corpus_digest", "policy_digest", "eligible_digest")
+                if any(_f in _DISK_SIDE for _f in _diff_fields):
+                    _drifted_disk.add(_i)
+                # ⚠️ **必须把「被改的那个值」打出来**（v0.24.0 修）
+                # → 只打印**字段名**不够：读者无法确认核验器读到的是**那一格**。
+                #   负控矩阵的哨兵断言直接判红：
+                #   「控制通过了，却没证明走过那条路径」。
+                # → 打印 recorded（记录里的）与 current（当前磁盘的）两个值。
                 print("[RECOND]", row.get("topic"),
                       "字段不同:", _diff_fields,
+                      "recorded:",
+                      json.dumps({_f: _row_data.get(_f) for _f in _diff_fields},
+                                 ensure_ascii=False, sort_keys=True),
+                      "current:",
+                      json.dumps({_f: _cur_data.get(_f) for _f in _diff_fields},
+                                 ensure_ascii=False, sort_keys=True),
                       "recorded_conditions:", row.get("conditions_digest"),
                       "→ **你不是在同样的条件下重演**：这是第三种裁决，"
                         "**不是**路由分歧")
             elif row.get("code_sha") and _cur_code and row.get("code_sha") != _cur_code:
                 recond_bad += 1
+                # 代码版本也是**磁盘侧**（用的是当前代码，不是记录时的代码）
+                _drifted_disk.add(_i)
                 print("[RECOND]", row.get("topic"),
                       "字段不同: ['code_sha']",
                       "recorded_code:", row.get("code_sha"),
                       "current_code:", _cur_code,
                       "→ 数据条件相同、**代码不同** → 结果不同也说得通")
-        for row in rows:
+        for _ri, row in enumerate(rows):
             if "policy_digest" not in row:
+                continue
+            # ⚠️ **条件已漂移的行，不判 [DIFF]**（v0.24.0 修）
+            # → 条件不同的时候，重算结果不同是**预期**的，
+            #   不是「路由出了事」。判 DIFF = **假指控**。
+            # → 这三种裁决必须**互斥**：
+            #     条件不同 → [RECOND]（不是路由问题）
+            #     条件相同 + 结果不同 → [DIFF]（路由真的分歧）
+            #     条件相同 + 结果相同 → 一致
+            if _ri in _drifted_disk:
                 continue
             p = json.loads(json.dumps(profile))
             p["tenGods"] = {k: dict(gods[k]) for k in row.get("roster_order", base_order)}
@@ -726,7 +904,7 @@ def main():
                 if mine["source"] != row["source"]:
                     print("[DIFF]", row["topic"], "field=source",
                           "recorded:", row["source"], "recomputed:", mine["source"])
-        print(f"[VERIFY] 一致 {agree} / 不一致 {disagree} / 共 {len(rows)}")
+        print(f"[VERIFY] 一致 {agree} / 不一致 {disagree} / 不可比 {len(_drifted_disk)} / 共 {len(rows)}")
         if cond_bad:
             print(f"[COND] 条件不一致 {cond_bad} 条 —— 这些**不是**路由分歧，"
                   f"是核对方用错了条件。")
@@ -754,9 +932,21 @@ def main():
                   f"而是「你重演时的条件已经不是记录时的条件」。")
         # 退出码是**位标志**：bit0=路由分歧 / bit1=条件被改 / bit2=provenance 断
         #                     bit3=重演条件不同（第三种裁决）
-        #   → 合法取值 0~15。老契约 0~7 一个数都没改，只多了一根轴。
+        #                     bit4=因果顺序倒置（授权晚于裁决）
+        #                     bit5=记录自述摘要对不上（记录被改过）
+        #   → 合法取值 0~63。老契约 0~15 一个数都没改，只多了两根轴。
+        if order_bad:
+            print(f"[ORDER] 因果顺序倒置 {order_bad} 条 —— 裁决**早于**授权，"
+                  f"这些记录的授权不成立。")
+        if integrity_bad:
+            print(f"[INTEGRITY] 记录自述摘要对不上 {integrity_bad} 条 —— "
+                  f"这些记录**自己都不认自己的摘要** → 被改过。")
+        if integrity_legacy:
+            print(f"[INTEGRITY] 旧记录 {integrity_legacy} 条（没有自述摘要）—— "
+                  f"**没被查过**，不等于**查过了没问题**。")
         return ((1 if disagree else 0) | (2 if cond_bad else 0)
-                | (4 if prov_bad else 0) | (8 if recond_bad else 0))
+                | (4 if prov_bad else 0) | (8 if recond_bad else 0)
+                | (16 if order_bad else 0) | (32 if integrity_bad else 0))
 
     # 名册快照：用来发现「谁走了」这类**结构变化**
     rs_path = os.path.join(ROOT, "decision-log.roster.json")
@@ -802,6 +992,11 @@ def main():
             for t in TOPICS:
                 r = build_record(t, profile, topic_memory, roster_order=order)
                 r["permuted"] = True
+                # ⚠️ 补写字段后**必须重算摘要**（v0.24.0 修）
+                # → 以前 `permuted` 是在 build_record **返回后**才写的，
+                #   而摘要在 build_record **内部**已经算完 → 摘要不覆盖 permuted。
+                # → 后果：那 36 条置换记录的 hash 永远对不上自己。
+                r["hash"] = record_hash(r)
                 records.append(r)
 
     if not args.no_state:

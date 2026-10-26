@@ -30,6 +30,7 @@ metamorphic properties and **adversarial record mutations** beside replay."
 """
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -59,6 +60,45 @@ def sentinel_for(cls):
     return "__SENTINEL_%s_%s__" % (cls, secrets.token_hex(4))
 
 
+def sentinel_for_order():
+    """ORDER 行的哨兵 = 一个**过去的随机时间戳**。
+
+    ⚠️ 这一行不能用普通的 `__SENTINEL_xxx__` 字面量：
+    `checked_at` 必须**能被解析成时间**，否则 [ORDER] 轴根本不触发。
+    → 所以哨兵是一个**随机生成的远古日期**（形如 1973-04-11T…）。
+    → 仍然遵守「每轮换新、断言查值不查形」：
+    每次运行是**不同的日期**，断言检查的是**那个具体日期字符串**
+    有没有出现在报告里。
+    """
+    y = 1900 + secrets.randbelow(100)
+    m = 1 + secrets.randbelow(12)
+    d = 1 + secrets.randbelow(28)
+    return "%04d-%02d-%02dT00:00:00+08:00" % (y, m, d)
+
+
+def _reseal(rows):
+    """**重算摘要** —— 模拟一个**会自洽的篡改者**。
+
+    ⚠️ v0.24.0 新增 [INTEGRITY] 轴后，负控矩阵有个**新问题**：
+    以前每个变异函数改完字段就完事，**摘要没跟着重算** →
+    现在每一行都会同时触发 [INTEGRITY]（bit5），
+    于是**所有行都会以同一个原因变红** → 矩阵失去分辨力。
+    → 现实威胁模型：**摘要不是签名**（没有密钥），
+      能改记录的人**也能重算摘要**。所以「不重算」不是有意义的攻击。
+    → 修法：默认**重算摘要**（改完记录仍然自洽），
+      这样每一行只测**它自己想测的那根轴**。
+    → 摘要这一轴**单独一行**测（`tamper_hash`）：那里**故意不重算**。
+    """
+    out = []
+    for r in rows:
+        r = dict(r)
+        body = json.dumps({k: v for k, v in r.items() if k != "hash"},
+                          ensure_ascii=False, sort_keys=True)
+        r["hash"] = hashlib.sha256(body.encode()).hexdigest()[:12]
+        out.append(r)
+    return out
+
+
 def stale_sentinel_for(cls):
     return "__SENTINEL_%s_%s__" % (cls, STALE_NONCE)
 
@@ -69,6 +109,8 @@ EXIT_COND = 2      # 条件被改（记录自述的 hash / 权重对不上）
 EXIT_BOTH = 3      # 两者都有
 EXIT_PROV = 4      # provenance 断（策略/资格集/代码 版本对不上，或策略未提升）
 EXIT_RECOND = 8    # 重演条件不同（第三种裁决：不是路由分歧）
+EXIT_ORDER = 16    # 因果顺序倒置（授权晚于裁决）
+EXIT_INTEGRITY = 32  # 记录自述摘要对不上（记录被改过）
 
 
 def _run(args, cwd=ROOT):
@@ -99,21 +141,21 @@ def mut_chosen(rows, sent=None):
     """改选中集合 —— 记录说选了别人。"""
     out = [dict(r) for r in rows]
     out[0]["chosen"] = [sent or "__SENTINEL_tamper_chosen__"]
-    return out, "改写第 1 条的 chosen"
+    return _reseal(out), "改写第 1 条的 chosen"
 
 
 def mut_source(rows, sent=None):
     """改来源标签 —— 记录说走了另一条路。"""
     out = [dict(r) for r in rows]
     out[0]["source"] = sent or "__SENTINEL_tamper_source__"
-    return out, "改写第 1 条的 source"
+    return _reseal(out), "改写第 1 条的 source"
 
 
 def mut_profile_hash(rows, sent=None):
     """改记录自述的条件 hash。"""
     out = [dict(r) for r in rows]
     out[0]["profile_hash"] = sent or "__SENTINEL_tamper_profile_hash__"
-    return out, "改写第 1 条的 profile_hash"
+    return _reseal(out), "改写第 1 条的 profile_hash"
 
 
 def mut_weights(rows, sent=None):
@@ -123,7 +165,7 @@ def mut_weights(rows, sent=None):
     if w:
         w[list(w)[0]] = sent or "__SENTINEL_tamper_weights__"
         out[0]["weights"] = w
-    return out, "改写第 1 条的 weights"
+    return _reseal(out), "改写第 1 条的 weights"
 
 
 def mut_both(rows, sent=None):
@@ -134,14 +176,14 @@ def mut_both(rows, sent=None):
     if w:
         w[list(w)[0]] = "__SENTINEL_tamper_both__"
         out[0]["weights"] = w
-    return out, "同时改写 chosen 与 weights"
+    return _reseal(out), "同时改写 chosen 与 weights"
 
 
 def mut_eligible(rows, sent=None):
     """改写**资格集 digest** —— 模拟「变体跑在了不是它声明的那份资格集上」。"""
     out = [dict(r) for r in rows]
     out[0]["eligible_digest"] = sent or "__SENTINEL_tamper_eligible__"
-    return out, "改写资格集 digest"
+    return _reseal(out), "改写资格集 digest"
 
 
 def mut_eligible_set(rows, sent=None):
@@ -149,7 +191,7 @@ def mut_eligible_set(rows, sent=None):
     这就是 @solanize 说的「变体引入了已签署名册快照之外的人 → 这一轮无效」。"""
     out = [dict(r) for r in rows]
     out[0]["eligible_set"] = list(out[0].get("eligible_set") or []) + [sent or "__SENTINEL_tamper_outsider__"]
-    return out, "引入签名资格集之外的人"
+    return _reseal(out), "引入签名资格集之外的人"
 
 
 def mut_code_sha(rows, sent=None):
@@ -157,14 +199,55 @@ def mut_code_sha(rows, sent=None):
     「你不是在同样的条件下重演」，**不是**路由分歧。"""
     out = [dict(r) for r in rows]
     out[0]["code_sha"] = sent or "__SENTINEL_tamper_code_sha__"
-    return out, "改写代码版本"
+    return _reseal(out), "改写代码版本"
 
 
 def mut_policy(rows, sent=None):
     """改写**策略 digest** —— 模拟「用一份没有提升记录的政策产出了记录」。"""
     out = [dict(r) for r in rows]
     out[0]["policy_digest"] = sent or "__SENTINEL_tamper_policy__"
-    return out, "改写策略 digest（该策略无提升记录）"
+    return _reseal(out), "改写策略 digest（该策略无提升记录）"
+
+
+def mut_corpus_digest(rows, sent=None):
+    """改写**语料摘要** —— 模拟「重演时的语料已经不是记录时的语料」。
+
+    @wren: "a mismatch is a third verdict, not a human judgment call."
+    → 这一行锁的是 v0.24.0 修的**第三种裁决**：语料摘要进 `conditions_digest`，
+      语料变了 → **[RECOND]**（条件不同），**不是** [DIFF]（路由分歧）。
+    → 哨兵 = 摘要值本身：报告必须打出**这个被改的摘要**，
+      才能证明核验器读的是**语料摘要那一格**，而不是别处。
+    """
+    out = [dict(r) for r in rows]
+    out[0]["corpus_digest"] = sent or "__SENTINEL_tamper_corpus__"
+    return _reseal(out), "改写语料摘要（语料已漂移）"
+
+
+def mut_order(rows, sent=None):
+    """把**裁决时间**改到**授权之前** —— 模拟「授权晚于裁决」。
+
+    @wren: "cause-before-verdict becomes checkable when the cause carries an
+    authorization stamp a reader can compare against the verdict time."
+    → 台账有 `promoted_at`，记录有 `checked_at` —— 以前**两者从没被比较过**。
+    → 哨兵 = 那个**早于授权**的时间戳：报告必须打出它，
+      才能证明核验器读的是**时间轴那一格**。
+    """
+    out = [dict(r) for r in rows]
+    out[0]["checked_at"] = sent or "2000-01-01T00:00:00+08:00"
+    return _reseal(out), "把裁决时间改到授权之前"
+
+
+def mut_hash(rows, sent=None):
+    """改写**记录自述的摘要** —— 模拟「记录自己都不认自己的摘要」。
+
+    → 这一行锁的是 v0.24.0 修的 **[INTEGRITY]** 轴：
+      以前 `hash` 写进去就没人再看过 → 一个**只有写入方能看见**的字段。
+    → 哨兵 = 被改的摘要值：报告必须打出 **recorded / recomputed** 两个值，
+      才能证明核验器**真的重算过**这一格。
+    """
+    out = [dict(r) for r in rows]
+    out[0]["hash"] = sent or "__SENTINEL_tamper_hash__"
+    return out, "改写记录自述摘要（记录被改过）"
 
 
 # (break class, 描述, 期望退出码, 期望 marker, 变异函数)
@@ -203,6 +286,18 @@ ROWS = [
     #   写死哨兵 → 两次一样 → 这一行红。
     ("tamper_code_sha", "改写代码版本（重演条件不同）", EXIT_RECOND, "[RECOND]", mut_code_sha,
      "tamper_code_sha", "normal"),
+    # ── v0.24.0 新增三行（每一行都有**对应的哨兵**）──
+    # 1. 语料摘要漂移 → 必须是 [RECOND]（第三种裁决），**不是** [DIFF]
+    ("tamper_corpus_digest", "改写语料摘要（语料已漂移）", EXIT_RECOND, "[RECOND]",
+     mut_corpus_digest, "tamper_corpus_digest", "normal"),
+    # 2. 裁决早于授权 → 必须是 [ORDER]（因果顺序轴）
+    ("tamper_order", "裁决时间早于授权时间", EXIT_ORDER, "[ORDER]",
+     mut_order, "tamper_order", "normal"),
+    # 3. 记录自述摘要被改 → 必须是 [INTEGRITY]
+    #    ⚠️ 这一行**故意不重算摘要**（mut_hash 不调 _reseal）
+    #    —— 因为「摘要被改了」这件事本身就是要测的东西。
+    ("tamper_hash", "改写记录自述摘要", EXIT_INTEGRITY, "[INTEGRITY]",
+     mut_hash, "tamper_hash", "normal"),
     ("sentinel_rotates", "哨兵必须每轮换新（不能是固定字面量）", EXIT_DIFF, "[DIFF]",
      mut_chosen, "tamper_chosen", "rotate"),
 ]
@@ -240,10 +335,13 @@ def _classify(rc, out, expect, marker, sentinel=None, kind="normal"):
     if rc == 0:
         return "FAIL", "退出码是 0 —— **篡改被放行了**"
     # 退出码是**位标志**：bit0=路由分歧 / bit1=条件被改 / bit2=provenance 断
-    #   → 合法取值 0~7。老契约 0~3 一个数都没改，只是多了一根轴。
+    #   bit3=重演条件不同 / bit4=因果顺序倒置 / bit5=记录自述摘要对不上
+    #   → 合法取值 0~63。老契约 0~15 一个数都没改，只多了两根轴。
+    _bits = (0, EXIT_DIFF, EXIT_COND, EXIT_BOTH, EXIT_PROV, EXIT_RECOND,
+             EXIT_ORDER, EXIT_INTEGRITY)
     _ok_exits = set()
-    for _b in (0, EXIT_DIFF, EXIT_COND, EXIT_BOTH, EXIT_PROV, EXIT_RECOND):
-        for _c in (0, EXIT_DIFF, EXIT_COND, EXIT_BOTH, EXIT_PROV, EXIT_RECOND):
+    for _b in _bits:
+        for _c in _bits:
             _ok_exits.add(_b | _c)
     if rc not in _ok_exits:
         return "INCONCLUSIVE", "退出码 %s 不在契约里（0~15 位标志）—— 无法判断" % rc
@@ -274,6 +372,11 @@ def run_matrix():
             if sent_cls:
                 sentinel = (stale_sentinel_for(sent_cls) if kind == "stale"
                             else sentinel_for(sent_cls))
+            if sent_cls == "tamper_order":
+                # ⚠️ ORDER 行的哨兵必须是**能解析的时间戳**，
+                #   否则 [ORDER] 轴不触发（它比较的是时间，不是字符串形状）。
+                #   → 每次运行一个**不同的远古日期**，断言查的是**那个值**。
+                sentinel = sentinel_for_order()
             if kind == "rotate":
                 # 两次独立运行 → 两个哨兵 → 必须**不同**
                 vals = []
