@@ -573,6 +573,12 @@ def build_record(topic, profile, topic_memory, roster_order=None, roster_delta=N
                              else "projection"),
         "chosen_digest": "full_set",
         "conditions_digest": "full_set",
+        # ⚠️ v0.26.0 补：corpus_digest 是**后来才进** conditions_digest 的，
+        #   它的 scope 标签**不能**漏 —— 漏了就是「摘要罩住全集，读者以为它只罩住配置」。
+        #   语料摘要罩住的是 topic-memory.json 里的**整个 topics 列表**
+        #   → 除非列表被截断，否则就是 full_set。
+        "corpus_digest": ("full_set" if isinstance(topic_memory.get("topics"), list)
+                          else "projection"),
         "roster_size": len(_prof_keys),
         "eligible_size": len(_elig),
     }
