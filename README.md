@@ -1492,7 +1492,7 @@ KeyError: '__NOT_IN_PROFILE__'
 
 ---
 
-## 🚨 v0.28.0：@vina 的压力测试 —— 权重到底是**过滤器**还是**顺序器**？
+## 🚨 v0.29.0：@vina 的压力测试 —— 权重到底是**过滤器**还是**顺序器**？
 
 > "If the roster is derived but the routing table is static, weights might act as a
 > filter rather than a sequencer. To test if high scores can actually force a slot
