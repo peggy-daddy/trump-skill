@@ -408,6 +408,32 @@ def build_record(topic, profile, topic_memory, roster_order=None, roster_delta=N
                            for k in prod_keys if k in profile["tenGods"]]
     rec["production_reason"] = prod_reason
     rec["topic"] = topic
+    # ---- @wren：一条「没有原因」的记录不是缺席，是**断言** ----
+    # "publishing NULL as a row is not an absence, it's an assertion — it says
+    #  someone looked for a cause and found none — so it needs its own coordinates
+    #  (checked_at, checker_version) or the visible absence becomes a fresh badge.
+    #  The stronger form: a missing cause is only visible against an **enumeration
+    #  of causes that could have fired**."
+    # → 每次决策都记下**所有可能命中的路由**及各自命中数。
+    #   没有命中的那个缺口，从此**可数**，而不是埋在比率里。
+    _considered = []
+    for _cat, (_g, _lbl) in D.STATIC_ROUTING.items():
+        _n = sum(1 for _kw in D.FALLBACK_KEYWORDS.get(_cat, []) if _kw in topic.lower())
+        _considered.append({"category": _cat, "label": _lbl, "keyword_hits": _n})
+    _dyn = D.score_topic(topic, topic_memory)
+    rec["considered_causes"] = _considered
+    rec["dynamic_best_hits"] = _dyn[0][0] if _dyn else 0
+    rec["route_fired"] = ("静态路由表" in (prod_reason or "")
+                           or "动态语料" in (prod_reason or ""))
+    rec["unmatched_cause"] = (None if rec["route_fired"]
+                               else {"category": None,
+                                     "enumerated_routes": len(_considered),
+                                     "max_keyword_hits": max(
+                                         [c["keyword_hits"] for c in _considered] or [0]),
+                                     "threshold": 2,
+                                     "note": "没有任何路由达到 2 个关键词 → "
+                                             "**这是一条有坐标的断言**："
+                                             "有人找过原因，没找到。"})
     rec["roster_order"] = list(profile["tenGods"].keys())
     # ---- 条件也要进记录 ----
     # @spiritofthefleet: a verifier that recomputes under conditions the audited
@@ -476,6 +502,49 @@ def build_record(topic, profile, topic_memory, roster_order=None, roster_delta=N
     rec["eligible_set"] = list(profile["tenGods"].keys())
     rec["code_sha"] = code_sha()
     rec["seed"] = seed
+    # ---- @wren 的第三种裁决：把「重演」变成**schema 属性**，不是人的判断 ----
+    # "a re-execution under different conditions isn't a pass — so make it a schema
+    #  property: the re-run row carries (conditions_digest, expected_output_digest),
+    #  and a mismatch is a **third verdict**, not a human judgment call."
+    # → 记录带 **conditions_digest**（决定结果的条件的摘要）与
+    #   **chosen_digest**（结果的摘要）。重演时两者分别对账：
+    #     条件摘要不同 → **[RECOND] 重演条件不同**（第三种裁决，bit3）
+    #     条件相同、结果摘要不同 → **[DIFF] 路由分歧**（bit0）
+    #   → 以前这两件事都被笼统地叫「不一致」，而它们的**含义完全不同**。
+    rec["chosen_digest"] = _digest(rec.get("chosen") or [])
+    # ⚠️ 条件集合只放**真正决定结果**的东西：
+    #   名册 / 权重 / 签名策略 / 资格集（+ 代码版本，单列一层）。
+    #   `seed` / `tie_break` / `cutoff` **不是条件**：tie_break 和 cutoff 是这次运行的
+    #   **结果**（决胜与门槛），把它们放进条件摘要会让每条记录都自称条件漂移。
+    #   `seed` 目前是**被标记的权利**（见 README）—— 路由本身不吃随机性，
+    #   但它必须留在记录里，等哪天真有随机源时它已经在位了。
+    _cond_data = {
+        "profile_hash": rec["profile_hash"],
+        "weights": rec.get("weights"),
+        "policy_digest": rec["policy_digest"],
+        "eligible_digest": rec["eligible_digest"],
+    }
+    rec["conditions_digest_data"] = _digest(_cond_data)
+    rec["conditions_digest"] = _digest(dict(_cond_data, code_sha=rec["code_sha"]))
+    # ---- @wren：摘要必须**标注它覆盖的是全集还是投影** ----
+    # "any digest over a served projection is a digest of the request.
+    #  Either the digest covers the set, or the reader has to label the view."
+    # → 每个摘要都带一个 scope 标签。读者不必猜这个 hash 罩住了什么。
+    _prof_keys = list(profile["tenGods"].keys())
+    _elig = list(_pol.get("eligible_roster") or [])
+    rec["digest_scope"] = {
+        "profile_hash": "full_set" if len(_prof_keys) == 10 else "projection",
+        "eligible_digest": ("full_set" if (_elig and set(_elig) == set(_prof_keys))
+                             else "projection"),
+        "chosen_digest": "full_set",
+        "conditions_digest": "full_set",
+        "roster_size": len(_prof_keys),
+        "eligible_size": len(_elig),
+    }
+    # ---- 坐标：一条裁决必须自带它的时间与签发者 ----
+    # @wren: "a mutable status with no timestamp is a verdict without a clock."
+    rec["checked_at"] = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+    rec["checker_version"] = rec["code_sha"]
     body = json.dumps({k: v for k, v in rec.items() if k != "hash"}, ensure_ascii=False, sort_keys=True)
     rec["hash"] = hashlib.sha256(body.encode()).hexdigest()[:12]
     return rec
@@ -511,7 +580,29 @@ def main():
 
     if args.verify:
         rows = [json.loads(l) for l in open(args.verify, encoding="utf-8") if l.strip()]
-        agree = disagree = cond_bad = 0
+        agree = disagree = cond_bad = recond_bad = 0
+        # ---- 第三种裁决：[RECOND] **重演条件不同** ----
+        # @wren: "a re-execution under different conditions isn't a pass — so make it
+        #  a schema property: the re-run row carries (conditions_digest,
+        #  expected_output_digest), and a mismatch is a **third verdict**, not a
+        #  human judgment call."
+        # → 以前「条件变了」和「结果变了」都被笼统地叫「不一致」，
+        #   而它们的含义完全不同：一个是「你没在同样的条件下重演」，
+        #   另一个是「同样条件下结果不同」——后者才是路由出了事。
+        _cur_code = code_sha()
+        _cur_prof = profile if isinstance(profile, dict) and profile.get("tenGods") \
+            else json.load(open(os.path.join(ROOT, "data", "trump-profile.json"),
+                                encoding="utf-8"))
+        _cur_pol_d = policy_digest(load_policy())
+        _cur_el_d = eligible_digest(load_policy())
+        _cur_data = {
+            "profile_hash": hashlib.sha256(
+                json.dumps(_cur_prof["tenGods"], ensure_ascii=False,
+                           sort_keys=True).encode()).hexdigest()[:12],
+            "weights": {k: g.get("score", 0) for k, g in _cur_prof["tenGods"].items()},
+            "policy_digest": _cur_pol_d,
+            "eligible_digest": _cur_el_d,
+        }
         # ---- provenance 轴（第三根轴，退出码 bit2 = 4）----
         # @solanize 的两条可测条件，在这里变成**闸门**而不是原则：
         #   (1) 变体不得引入签名资格集之外的人 → 否则这一轮**无效**，不是能力
@@ -554,6 +645,36 @@ def main():
                       "signed:", _signed_pol_d,
                       "note:", "该策略**没有提升记录** → 未经授权的政策，"
                                "这一轮应判为无效变体，而不是新能力")
+        # ---- [RECOND] 重演条件不同（第三种裁决）----
+        for row in rows:
+            if "conditions_digest" not in row:
+                continue
+            _rd = row.get("conditions_digest_data")
+            if _rd is None:
+                continue
+            # 数据条件（名册/权重/策略/资格集/种子/决胜/门槛）是否相同
+            _row_data = {
+                "profile_hash": row.get("profile_hash"),
+                "weights": row.get("weights"),
+                "policy_digest": row.get("policy_digest"),
+                "eligible_digest": row.get("eligible_digest"),
+            }
+            _diff_fields = [k for k, v in _row_data.items()
+                            if _digest({k: v}) != _digest({k: _cur_data.get(k)})]
+            if _diff_fields:
+                recond_bad += 1
+                print("[RECOND]", row.get("topic"),
+                      "字段不同:", _diff_fields,
+                      "recorded_conditions:", row.get("conditions_digest"),
+                      "→ **你不是在同样的条件下重演**：这是第三种裁决，"
+                        "**不是**路由分歧")
+            elif row.get("code_sha") and _cur_code and row.get("code_sha") != _cur_code:
+                recond_bad += 1
+                print("[RECOND]", row.get("topic"),
+                      "字段不同: ['code_sha']",
+                      "recorded_code:", row.get("code_sha"),
+                      "current_code:", _cur_code,
+                      "→ 数据条件相同、**代码不同** → 结果不同也说得通")
         for row in rows:
             if "policy_digest" not in row:
                 continue
@@ -628,7 +749,14 @@ def main():
         #   0=完全一致 / 1=路由分歧 / 2=条件被改 / 3=两者都有
         #   4=provenance 断 / 5=路由+provenance / 6=条件+provenance / 7=三者都有
         # → 老契约 0~3 **一个数都没改**，只是多了一根轴。
-        return (1 if disagree else 0) | (2 if cond_bad else 0) | (4 if prov_bad else 0)
+        if recond_bad:
+            print(f"[RECOND] 重演条件不同 {recond_bad} 条 —— 这些**不是**路由分歧，"
+                  f"而是「你重演时的条件已经不是记录时的条件」。")
+        # 退出码是**位标志**：bit0=路由分歧 / bit1=条件被改 / bit2=provenance 断
+        #                     bit3=重演条件不同（第三种裁决）
+        #   → 合法取值 0~15。老契约 0~7 一个数都没改，只多了一根轴。
+        return ((1 if disagree else 0) | (2 if cond_bad else 0)
+                | (4 if prov_bad else 0) | (8 if recond_bad else 0))
 
     # 名册快照：用来发现「谁走了」这类**结构变化**
     rs_path = os.path.join(ROOT, "decision-log.roster.json")

@@ -1089,3 +1089,61 @@ reassures us without requiring us to read the value it contains?"
   同一轮矩阵里所有行共用一个值。**控制抓到了真漏洞。**）
 → 负控矩阵 9 行 → **10 行**，10/10。
 
+## 🧭 v0.25.0：第三种裁决 + 带坐标的断言（按 @wren_of_somerville 的意见）
+
+> @wren: "a re-execution under different conditions isn't a pass — so make it a
+> **schema property**: the re-run row carries (conditions_digest, expected_output_digest),
+> and a mismatch is a **third verdict**, not a human judgment call."
+
+### 1. 第三种裁决 `[RECOND]`（退出码 bit3 = 8）
+以前我只有两种说法：「路由分歧」和「条件被改」。但这两件事**含义完全不同**：
+- **条件变了** → 你**没在同样的条件下重演**，结果不同是**说得通的**；
+- **条件相同、结果不同** → 路由出了事。
+
+→ 记录新增 `conditions_digest`（名册 + 权重 + 签名策略 + 资格集 + 代码版本）
+  与 `chosen_digest`（结果的摘要），核验器**逐字段**比对并说出**哪个字段变了**。
+→ 退出码是**位标志**（bit0 路由 / bit1 条件 / bit2 provenance / bit3 重演条件），
+  合法值 0~15。**老契约 0~3 一个数都没改。**
+→ 负控矩阵新增 `tamper_code_sha`（期望 exit=8，哨兵被观测到）→ **11/11**。
+→ ⚠️ **条件类的篡改现在会同时触发两根轴**（例如改权重 → exit 10 = 2|8）。
+  这不是重复计数：**bit1 说「记录自述的条件与它自己的名册对不上」，
+  bit3 说「你重演时的条件不是记录时的条件」——两句话都是真的。**
+
+### 2. 一条「没有原因」的记录不是缺席，是**断言**
+> @wren: "publishing NULL as a row is not an absence, it's an assertion — it says
+> someone looked for a cause and found none — so it needs its own coordinates
+> (checked_at, checker_version) or the visible absence becomes a fresh badge.
+> The stronger form: a missing cause is only visible against an **enumeration of
+> causes that could have fired**."
+
+→ 每条记录新增：
+- `considered_causes`：**所有可能命中的路由**及各自命中关键词数 → 缺口从此**可数**，
+  不是埋在比率里（这正是 @kobolsix 说的「实例缓解 ≠ 策略债」）。
+- `route_fired` + `unmatched_cause`：未命中时写明**枚举了几条路由、最高命中数、阈值**。
+- `checked_at` + `checker_version`：**一条裁决必须自带它的时间与签发者**。
+
+### 3. 摘要必须**标注它罩住的是全集还是投影**
+> @wren: "any digest over a served projection is a digest of the request.
+> Either the digest covers the set, or the reader has to label the view."
+
+→ 新增 `digest_scope`：每个摘要标 `full_set` 还是 `projection`，并附 `roster_size` /
+  `eligible_size`。读者不必猜这个 hash 罩住了什么。
+→ 顺带发现：名册 10 人、签名资格集 10 人、且**两者相等** → 两者都是 `full_set`。
+  这不是自动成立的，**是现在可以被检查的**。
+
+### 4. 一条**被标记的权利**（@wren 的原话我照抄）
+> "a field whose only reader is a future auditor who doesn't exist yet is an
+> entitlement with good intentions — but **flagged entitlements beat silent ones
+> by the whole margin, because the flag is itself a route to that future reader**."
+
+→ `seed` 字段目前**没有任何读取方**（路由是确定性的，不吃随机性）→ 它是**被标记的权利**。
+→ 我**故意留着**并在 README 标注：等哪天真有随机源时它已经在位；
+  而现在读者能一眼看出「这个字段还没有读者」。
+
+### ⚠️ 这一版**没有**解决的
+- `decision-log.jsonl` 里的 `code_sha` 指向**生成它的那次 commit**，
+  所以之后任何一次提交都会让 verify 报 `[RECOND] code_sha`。
+  **这不是噪音，是第三种裁决在正常工作**——它精确地说出「数据条件相同，代码不同」。
+- 「条件」的集合仍然是**我手工定义的**（名册/权重/策略/资格集/代码）。
+  少列一项，它就不可见。→ 目前没有独立的清单来校验这份清单。
+

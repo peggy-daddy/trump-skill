@@ -68,6 +68,7 @@ EXIT_DIFF = 1      # 路由分歧（重算选的人不一样）
 EXIT_COND = 2      # 条件被改（记录自述的 hash / 权重对不上）
 EXIT_BOTH = 3      # 两者都有
 EXIT_PROV = 4      # provenance 断（策略/资格集/代码 版本对不上，或策略未提升）
+EXIT_RECOND = 8    # 重演条件不同（第三种裁决：不是路由分歧）
 
 
 def _run(args, cwd=ROOT):
@@ -151,6 +152,14 @@ def mut_eligible_set(rows, sent=None):
     return out, "引入签名资格集之外的人"
 
 
+def mut_code_sha(rows, sent=None):
+    """改写**代码版本** —— 数据条件相同、代码不同 → 这是**第三种裁决**：
+    「你不是在同样的条件下重演」，**不是**路由分歧。"""
+    out = [dict(r) for r in rows]
+    out[0]["code_sha"] = sent or "__SENTINEL_tamper_code_sha__"
+    return out, "改写代码版本"
+
+
 def mut_policy(rows, sent=None):
     """改写**策略 digest** —— 模拟「用一份没有提升记录的政策产出了记录」。"""
     out = [dict(r) for r in rows]
@@ -174,17 +183,26 @@ ROWS = [
     ("baseline", "没篡改", EXIT_OK, "[VERIFY]", None, None, "normal"),
     ("tamper_chosen", "改写选中集合", EXIT_DIFF, "[DIFF]", mut_chosen, "tamper_chosen", "normal"),
     ("tamper_source", "改写来源标签", EXIT_DIFF, "[DIFF]", mut_source, "tamper_source", "normal"),
-    ("tamper_profile_hash", "改写条件 hash", EXIT_COND, "[COND]", mut_profile_hash, "tamper_profile_hash", "normal"),
-    ("tamper_weights", "改写权重", EXIT_COND, "[COND]", mut_weights, "tamper_weights", "normal"),
-    ("tamper_both", "同时改路由与条件", EXIT_BOTH, "[DIFF]", mut_both, "tamper_both", "normal"),
-    ("tamper_eligible", "改写资格集 digest", EXIT_PROV, "[PROV]", mut_eligible, "tamper_eligible", "normal"),
+    # 改写名册 hash / 权重 = **条件真的变了** → 条件轴(bit1) + 重演条件轴(bit3) 一起响。
+    # 这不是重复计数：bit1 说「记录自述的条件与它自己的名册对不上」，
+    #   bit3 说「你重演时的条件不是记录时的条件」。**两句话都是真的。**
+    ("tamper_profile_hash", "改写条件 hash", EXIT_COND | EXIT_RECOND, "[COND]", mut_profile_hash, "tamper_profile_hash", "normal"),
+    ("tamper_weights", "改写权重", EXIT_COND | EXIT_RECOND, "[COND]", mut_weights, "tamper_weights", "normal"),
+    ("tamper_both", "同时改路由与条件", EXIT_BOTH | EXIT_RECOND, "[DIFF]", mut_both, "tamper_both", "normal"),
+    # ⚠️ 改写 policy_digest / eligible_digest 会**同时**触发两根轴：
+    #   bit2 provenance（策略对不上签名）+ bit3 重演条件不同（条件确实变了）。
+    #   → 期望值是 **12 = 4|8**，不是 4。这不是放宽断言，是**更精确**：
+    #     篡改策略摘要既让「授权」断了，也让「重演条件」变了，两件事都该被记。
+    ("tamper_eligible", "改写资格集 digest", EXIT_PROV | EXIT_RECOND, "[PROV]", mut_eligible, "tamper_eligible", "normal"),
     ("tamper_outsider", "引入签名资格集之外的人", EXIT_PROV, "[PROV]", mut_eligible_set, "tamper_outsider", "normal"),
-    ("tamper_policy", "改写策略 digest（无提升记录）", EXIT_PROV, "[PROV]", mut_policy, "tamper_policy", "normal"),
+    ("tamper_policy", "改写策略 digest（无提升记录）", EXIT_PROV | EXIT_RECOND, "[PROV]", mut_policy, "tamper_policy", "normal"),
     # ── **对控制的控制**（@Lucifer_V 的失效模式）──
     # 哨兵若被写死成字面量，读者就只需认**形状**（「看起来像哨兵」= 红的），
     # 于是哨兵变成**第二个徽章** —— 和它要防的 [DIFF] 标志同一种病。
     # → 这一行断言的是：**两次独立运行的哨兵值必须不同**。
     #   写死哨兵 → 两次一样 → 这一行红。
+    ("tamper_code_sha", "改写代码版本（重演条件不同）", EXIT_RECOND, "[RECOND]", mut_code_sha,
+     "tamper_code_sha", "normal"),
     ("sentinel_rotates", "哨兵必须每轮换新（不能是固定字面量）", EXIT_DIFF, "[DIFF]",
      mut_chosen, "tamper_chosen", "rotate"),
 ]
@@ -223,10 +241,12 @@ def _classify(rc, out, expect, marker, sentinel=None, kind="normal"):
         return "FAIL", "退出码是 0 —— **篡改被放行了**"
     # 退出码是**位标志**：bit0=路由分歧 / bit1=条件被改 / bit2=provenance 断
     #   → 合法取值 0~7。老契约 0~3 一个数都没改，只是多了一根轴。
-    if rc not in (EXIT_DIFF, EXIT_COND, EXIT_BOTH, EXIT_PROV,
-                  EXIT_DIFF | EXIT_PROV, EXIT_COND | EXIT_PROV,
-                  EXIT_BOTH | EXIT_PROV):
-        return "INCONCLUSIVE", "退出码 %s 不在契约里（0~7 位标志）—— 无法判断" % rc
+    _ok_exits = set()
+    for _b in (0, EXIT_DIFF, EXIT_COND, EXIT_BOTH, EXIT_PROV, EXIT_RECOND):
+        for _c in (0, EXIT_DIFF, EXIT_COND, EXIT_BOTH, EXIT_PROV, EXIT_RECOND):
+            _ok_exits.add(_b | _c)
+    if rc not in _ok_exits:
+        return "INCONCLUSIVE", "退出码 %s 不在契约里（0~15 位标志）—— 无法判断" % rc
     if rc != expect:
         return "FAIL", "退出码 %s，期望 %s —— 它因为**别的原因**红了" % (rc, expect)
     if marker not in out:
@@ -304,7 +324,7 @@ def run_matrix():
             "n_pass": sum(1 for r in rows if r["status"] == "PASS"),
             "n_fail": n_fail, "n_inconclusive": n_inc,
             "detectable_breaks": [r["break_class"] for r in rows if r["pass"]],
-            "exit_contract": [EXIT_OK, EXIT_DIFF, EXIT_COND, EXIT_BOTH, EXIT_PROV]}
+            "exit_contract": [EXIT_OK, EXIT_DIFF, EXIT_COND, EXIT_BOTH, EXIT_PROV, EXIT_RECOND]}
 
 
 def main():
