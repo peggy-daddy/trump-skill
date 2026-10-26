@@ -72,21 +72,21 @@ def _write(rows, path):
 def mut_chosen(rows):
     """改选中集合 —— 记录说选了别人。"""
     out = [dict(r) for r in rows]
-    out[0]["chosen"] = ["__TAMPERED__"]
+    out[0]["chosen"] = ["__SENTINEL_tamper_chosen__"]
     return out, "改写第 1 条的 chosen"
 
 
 def mut_source(rows):
     """改来源标签 —— 记录说走了另一条路。"""
     out = [dict(r) for r in rows]
-    out[0]["source"] = "__TAMPERED__"
+    out[0]["source"] = "__SENTINEL_tamper_source__"
     return out, "改写第 1 条的 source"
 
 
 def mut_profile_hash(rows):
     """改记录自述的条件 hash。"""
     out = [dict(r) for r in rows]
-    out[0]["profile_hash"] = "deadbeef0000"
+    out[0]["profile_hash"] = "__SENTINEL_tamper_profile_hash__"
     return out, "改写第 1 条的 profile_hash"
 
 
@@ -95,7 +95,7 @@ def mut_weights(rows):
     out = [dict(r) for r in rows]
     w = dict(out[0].get("weights") or {})
     if w:
-        w[list(w)[0]] = 999
+        w[list(w)[0]] = "__SENTINEL_tamper_weights__"
         out[0]["weights"] = w
     return out, "改写第 1 条的 weights"
 
@@ -103,28 +103,49 @@ def mut_weights(rows):
 def mut_both(rows):
     """同时改路由结果和条件 —— 两者都有。"""
     out = [dict(r) for r in rows]
-    out[0]["chosen"] = ["__TAMPERED__"]
+    out[0]["chosen"] = ["__SENTINEL_tamper_both__"]
     w = dict(out[0].get("weights") or {})
     if w:
-        w[list(w)[0]] = 999
+        w[list(w)[0]] = "__SENTINEL_tamper_both__"
         out[0]["weights"] = w
     return out, "同时改写 chosen 与 weights"
 
 
 # (break class, 描述, 期望退出码, 期望 marker, 变异函数)
+# @solanize: "the broken-table control needs a **pinned injection point**:
+# break the route at a specific edge with a sentinel, and assert that the probe
+# *observed the sentinel* rather than merely that the number moved.
+# Otherwise a broken table can be broken somewhere the probe's measurement path
+# never traverses, the probe reads a change, and the control passes while proving
+# nothing about that path."
+#
+# → 所以每一行有一个**唯一哨兵**，断言从「类别 marker 出现了」升级为
+#   **「核验器的报告里出现了这个具体哨兵」**。
+#   类别 marker 只能证明「有东西不一样」；哨兵能证明「**核验器读到了我改的那一格**」。
 ROWS = [
-    ("baseline", "没篡改", EXIT_OK, "[VERIFY]", None),
-    ("tamper_chosen", "改写选中集合", EXIT_DIFF, "[DIFF]", mut_chosen),
-    ("tamper_source", "改写来源标签", EXIT_DIFF, "[DIFF]", mut_source),
-    ("tamper_profile_hash", "改写条件 hash", EXIT_COND, "[COND]", mut_profile_hash),
-    ("tamper_weights", "改写权重", EXIT_COND, "[COND]", mut_weights),
-    ("tamper_both", "同时改路由与条件", EXIT_BOTH, "[DIFF]", mut_both),
+    ("baseline", "没篡改", EXIT_OK, "[VERIFY]", None, None),
+    ("tamper_chosen", "改写选中集合", EXIT_DIFF, "[DIFF]", mut_chosen,
+     "__SENTINEL_tamper_chosen__"),
+    ("tamper_source", "改写来源标签", EXIT_DIFF, "[DIFF]", mut_source,
+     "__SENTINEL_tamper_source__"),
+    ("tamper_profile_hash", "改写条件 hash", EXIT_COND, "[COND]", mut_profile_hash,
+     "__SENTINEL_tamper_profile_hash__"),
+    ("tamper_weights", "改写权重", EXIT_COND, "[COND]", mut_weights,
+     "__SENTINEL_tamper_weights__"),
+    ("tamper_both", "同时改路由与条件", EXIT_BOTH, "[DIFF]", mut_both,
+     "__SENTINEL_tamper_both__"),
 ]
 
 
-def _classify(rc, out, expect, marker):
+def _classify(rc, out, expect, marker, sentinel=None):
     """三态判定：PASS / FAIL / INCONCLUSIVE。
-    一个「因为别的原因红」的核验器 = 没有核验器 → 那也是 FAIL，不是 PASS。"""
+    一个「因为别的原因红」的核验器 = 没有核验器 → 那也是 FAIL，不是 PASS。
+
+    @solanize 的加码：**哨兵必须被观测到**。
+    只断言类别 marker 出现，只能证明「有东西不一样」；
+    断言**那个具体哨兵**出现在报告里，才能证明
+    **核验器真的读到了我改的那一格**（而不是在别处差异了一下就顺手报了个 [DIFF]）。
+    """
     if rc == 0 and expect == EXIT_OK:
         return ("PASS", "按预期的方式绿了") if marker in out else \
                ("FAIL", "退出码对，但缺少证据标记 %s" % marker)
@@ -136,7 +157,11 @@ def _classify(rc, out, expect, marker):
         return "FAIL", "退出码 %s，期望 %s —— 它因为**别的原因**红了" % (rc, expect)
     if marker not in out:
         return "FAIL", "退出码对，但缺少理由标记 %s —— 不知道为什么拒绝的" % marker
-    return "PASS", "按预期的方式红了"
+    if sentinel and sentinel not in out:
+        return ("FAIL", "退出码对、理由标记也在，但**哨兵 %s 没出现在报告里**"
+                " → 核验器没有把**被改的那一格**读出来，它是在别处读到了差异"
+                "（**控制通过了，却没证明走过那条路径**）" % sentinel)
+    return "PASS", "按预期的方式红了，且**哨兵被观测到**"
 
 
 def run_matrix():
@@ -149,7 +174,7 @@ def run_matrix():
                     "n": 1, "n_fail": 0, "n_inconclusive": 1, "n_pass": 0,
                     "detectable_breaks": [], "exit_contract": [EXIT_OK, EXIT_DIFF,
                                                               EXIT_COND, EXIT_BOTH]}
-        for cls, what, expect, marker, mut in ROWS:
+        for cls, what, expect, marker, mut, sentinel in ROWS:
             if mut is None:
                 path = os.path.join(tmp, "base.jsonl")
                 target = base
@@ -158,10 +183,11 @@ def run_matrix():
                 path = os.path.join(tmp, cls + ".jsonl")
                 _write(target, path)
             rc, out = _run(["decision_log.py", "--verify", path])
-            status, why = _classify(rc, out, expect, marker)
+            status, why = _classify(rc, out, expect, marker, sentinel)
             rows.append({"break_class": cls, "what": what,
                          "expected_exit": expect, "actual_exit": rc,
                          "expect_marker": marker, "marker_seen": marker in out,
+                         "sentinel": sentinel, "sentinel_seen": (sentinel in out) if sentinel else None,
                          "status": status, "pass": status == "PASS", "why": why,
                          "evidence": out.strip().splitlines()[-1][:160] if out.strip() else ""})
     n_fail = sum(1 for r in rows if r["status"] == "FAIL")

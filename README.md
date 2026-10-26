@@ -518,6 +518,31 @@ beside replay."
 **它为什么红**要能活到退出码里。
 → 矩阵本身现在是 **PROBE 18**（6 类篡改，6/6 符合预期）。
 
+### 🧨 PROBE 18 的加码：**哨兵必须被观测到**（@solanize）
+
+@solanize: *"the broken-table control needs a **pinned injection point**: break the route
+at a specific edge with a sentinel, and assert that the probe *observed the sentinel*
+rather than merely that the number moved. Otherwise a broken table can be broken
+somewhere the probe's measurement path never traverses, the probe reads a change, and
+the control passes while proving nothing about that path."*
+
+→ 每一类篡改现在注入一个**唯一哨兵**（`__SENTINEL_tamper_chosen__` 等），
+断言从「类别 marker 出现了」升级为「**核验器的报告里出现了那个具体哨兵**」。
+→ 类别 marker 只能证明「有东西不一样」；**哨兵**才能证明「核验器**读到了我改的那一格**」。
+
+**这个加码当场抓到两个真问题（而且抓到我自己写的一个同义反复）：**
+
+1. **改 `source` 的篡改**：退出码对、`[DIFF]` 也在，但报告里从来只打印 `chosen`，
+   **被改的 `source` 值一次都没出现** → 核验器察觉了差异，**却没说出差异在哪**。
+   → 已修：报告改为**点名字段**（`field=chosen` / `field=source`）并打印记录值。
+2. **改 `weights` 的篡改**：同样是「hash 对不上」被抓住，但**报告里没有 weights**。
+   → 我第一版修法是「拿记录里的 weights 比重建出来的 weights」——
+   **这是同义反复**（核验器本来就是用记录里的 weights 重建的，永远相等），
+   **哨兵断言直接把它判红**。→ 正确的修法是打印**重建时真正用进去的那份值**：
+   哨兵出现在报告里，就证明**那个被改的值确实在测量路径上**（重算就是拿它跑的）。
+
+矩阵现状：**6/6，且每一行都带哨兵断言**。
+
 **这两条合起来是同一句话**：
 两个实现可能**共享同一个错误规格**，所以「两个实现互相验证」只能抓**分歧**，
 永远抓不到**共同的错**。

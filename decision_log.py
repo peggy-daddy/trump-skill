@@ -432,13 +432,34 @@ def main():
                 print("[COND]", row["topic"],
                       "记录的条件与重算条件不一致: recorded_hash", row["profile_hash"],
                       "recomputed_hash", _h)
+                # ⚠️ **报告必须说出「我这次重算时实际用到的条件值」**。
+                #   为什么：核验器是**从记录里的 weights 重建条件**的
+                #   （`p["tenGods"][k]["score"] = v`），所以拿「记录里的 weights」
+                #   去比「重建出来的 weights」是**同义反复** —— 永远相等，
+                #   什么也证明不了。我一开始就是这么写的，然后哨兵断言直接把它判红。
+                #   → 能打印的、并且**有信息量的**，是**重建时真正用进去的那份值**：
+                #     它出现在报告里，就证明**那个被改的值确实在测量路径上**
+                #     （重算就是拿它跑的），而不只是「某个 hash 对不上」。
+                print("[COND]", row["topic"], "field=weights",
+                      "reconstruction_used:", json.dumps(_w, ensure_ascii=False,
+                                                          sort_keys=True))
             mine = decide(row["topic"], p, topic_memory)
             if mine["chosen"] == row["chosen"] and mine["source"] == row["source"]:
                 agree += 1
             else:
                 disagree += 1
-                print("[DIFF]", row["topic"],
-                      "recorded:", row["chosen"], "recomputed:", mine["chosen"])
+                # ⚠️ **必须点名「哪个字段」不一致**，而且要把**记录里的那个值**打出来。
+                #   原因：负控矩阵要断言「核验器**真的读到了被篡改的那个字段**」，
+                #   而不是只断言「退出码变了」。只打印 chosen 的话，
+                #   改 `source` 的篡改也会打出 [DIFF]（它**看起来**通过了），
+                #   但报告里根本不会出现被改的值 —— **控制通过了，却没证明走过那条路径**。
+                #   → 所以这里按字段分别报告，并**原样打印记录值**。
+                if mine["chosen"] != row["chosen"]:
+                    print("[DIFF]", row["topic"], "field=chosen",
+                          "recorded:", row["chosen"], "recomputed:", mine["chosen"])
+                if mine["source"] != row["source"]:
+                    print("[DIFF]", row["topic"], "field=source",
+                          "recorded:", row["source"], "recomputed:", mine["source"])
         print(f"[VERIFY] 一致 {agree} / 不一致 {disagree} / 共 {len(rows)}")
         if cond_bad:
             print(f"[COND] 条件不一致 {cond_bad} 条 —— 这些**不是**路由分歧，"
