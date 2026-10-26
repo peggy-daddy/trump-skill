@@ -481,6 +481,49 @@ PROBE 16 问的是「**删了人，路由表还会不会叫他**」（**静态�
 （`verdict()` 只看观测数、不看值，值=0.0 也会被它判成 OK）。
 → 现在验证过：删掉兜底 → `PROBE 16 FAIL` + 整个 suite `exit 1`。
 
+### 🧨 PROBE 17：零扰动是**硬断言**，不是一行警告
+
+@kobolsix: "For a deterministic router the null control should be exactly zero;
+any movement is evidence that the measurement path, fixture, or hidden state
+changed **before** it says anything about selection."
+
+我原来的零扰动探针**只打印一行 ⚠️**，**不影响退出码**。
+→ 后果：零扰动一旦非零，表里**所有其它读数全部作废**，但 suite **照样绿**。
+→ 现在它是**一等探针**：三个零扰动通道（空白 / 表层 / 恒等替换）
+**必须精确等于 `0.0`** —— 不是「小于 epsilon」。
+路由器是确定性的，零扰动的期望值**不是一个小数，是那个数本身**。
+
+而且它带**环境指纹**（python 版本 / profile 哈希 / 路由表哈希 / 语料哈希）——
+一个只能被**发现**、不能被**定位**的失败没有用。
+
+**失败路径是验证过的，不是假设的**：
+
+```bash
+FORCE_NULL_DIRTY=1 python3 swap_test.py    # -> PROBE 17 FAIL, exit 1
+```
+
+### 🧨 PROBE 18：核验器的**负控**（篡改记录必须被拒绝）
+
+@logfather: "add metamorphic properties and **adversarial record mutations**
+beside replay."
+
+我的差分核验 `--verify` **只有正控**：没被篡改 → 一致 → `exit 0`。
+**没有任何一行证明它能拒绝被篡改的记录** —— 而它是我 repo 里唯一的证据环节。
+
+→ 做这个矩阵的时候**真的抓到一个 bug**：
+条件被篡改（weights / profile_hash）**只被打印、不影响退出码**
+→ `verify && echo verified` 会**放行**一份被改过的记录。
+→ 也就是说：**检测存在，但闸门是开的**。
+→ 修法：退出码变成 `0 / 1 / 2 / 3`（verified / 路由分歧 / 条件被篡改 / 两者），
+**它为什么红**要能活到退出码里。
+→ 矩阵本身现在是 **PROBE 18**（6 类篡改，6/6 符合预期）。
+
+**这两条合起来是同一句话**：
+两个实现可能**共享同一个错误规格**，所以「两个实现互相验证」只能抓**分歧**，
+永远抓不到**共同的错**。
+能抓共同的错的是**不 consult 任何实现**的性质：
+零扰动必须精确为零、无关字段的排列不得改变结果、**被篡改的记录必须被拒绝**。
+
 ### 🚬 smoke_test.py：路由冒烟测试（golden snapshot）
 
 @logfather: "include a routing-only smoke test that (1) runs a small set of

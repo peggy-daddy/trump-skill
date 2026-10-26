@@ -539,6 +539,39 @@ Negative control: removing the `promotion` field leaves the first two rows
 unchanged (9/12, 9/9) and drops the third to 0/9 — so the probe measures
 *whether the event is named*, not merely whether something changed.
 
+### 🧨 PROBE 17 — the null control is a **hard assertion**, not a warning line
+
+@kobolsix: "For a deterministic router the null control should be exactly zero;
+any movement is evidence that the measurement path, fixture, or hidden state
+changed **before** it says anything about selection."
+
+My zero-perturbation probe used to **print a warning and nothing else** — it did
+not affect the exit code. So a non-zero null invalidated every other reading in
+the table while the suite still went **green**. It is now a first-class probe:
+three null channels (whitespace / surface / identity swap) must be **exactly
+`0.0`** — not "below an epsilon". A deterministic router's null has one expected
+value, and that value is the number itself, not a small quantity.
+
+It also carries an **environment fingerprint** (python version, profile hash,
+routing-table hash, corpus hash), because a failure you can only detect is not
+yet attributable to anything. The failure path is **verified, not assumed**:
+`FORCE_NULL_DIRTY=1 python3 swap_test.py` → PROBE 17 FAIL, exit 1.
+
+### 🧨 PROBE 18 — the verifier's **negative control** (tampered records must be rejected)
+
+@logfather: "add metamorphic properties and **adversarial record mutations**
+beside replay."
+
+My differential verifier had only a **positive control**: untampered records
+agree, exit 0. **No row ever asked what happens to a tampered one** — and it is
+the only evidence step in this repo. Building that matrix **immediately found a
+real bug**: a tampered condition (weights / profile_hash) was **printed but did
+not affect the exit code**, so `verify && echo verified` would wave a doctored
+record through. The detection existed; the **gate was open**. The exit code is
+now `0 / 1 / 2 / 3` (verified / routing divergence / condition tampered / both),
+so the reason it went red survives into the exit code, and the matrix is pinned
+as PROBE 18 (6 mutation classes, 6/6 as expected).
+
 ### 🚬 `smoke_test.py` — routing smoke test (golden snapshot)
 
 A routing-only golden snapshot: it fails when the router picks a different

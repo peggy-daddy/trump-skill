@@ -748,6 +748,13 @@ def report(topics, as_json=False):
     p0b = sig_change_rate(base, null_b)
     # 探测器的假阳性率下界 = 零扰动 A 的变化率（它按定义必须为 0）
     detector_fp = p0
+    # @kobolsix: "For a deterministic router the null control should be exactly zero;
+    # any movement is evidence that the measurement path, fixture, or hidden state
+    # changed **before** it says anything about selection."
+    # → 以前这里只打印 ⚠️，**不影响退出码** → 零扰动一旦非零，
+    #   表里其它读数全部作废，但 suite 照样绿。
+    # → 现在零扰动是**一等探针（PROBE 17）**：必须**精确等于 0.0**（不是「小于 epsilon」），
+    #   并且带**环境指纹**，好让非零能被**定位**，而不只是被**发现**。
     if p0 > 0:
         print("  ⚠️⚠️ 探测器假阳性：零扰动本身报出 %.1f%% 变化 —— 表中所有读数都至少上浮这么多。" % (p0 * 100))
 
@@ -1104,6 +1111,69 @@ def report(topics, as_json=False):
                "note": "**缺陷复现**：从名册删掉 %s 之后，路由仍然选中了他 %d 次"
                        "（名册外的幽灵上台）"
                        % (_c.get("victim"), _c.get("runtime_still_chooses_victim_n", 0))}
+    # ---- PROBE 17: 零扰动是**硬断言**（不是一行警告）----
+    # 「必须精确为 0」vs「必须小于 epsilon」：路由器是确定性的，
+    # 所以零扰动的期望值**不是一个小数，是那个数本身**。
+    # 任何一个非零 → 测量路径 / fixture / 隐藏状态变了 → 表里其它读数**全部作废**。
+    _nulls = {"whitespace": p0, "surface": p0b, "identity_swap": p0c}
+    _null_bad = {k: v for k, v in _nulls.items() if v != 0.0}
+    _env_fp = {
+        "python": "%d.%d.%d" % sys.version_info[:3],
+        "profile_sha12": hashlib.sha256(
+            json.dumps(profile.get("tenGods", {}), ensure_ascii=False,
+                       sort_keys=True).encode()).hexdigest()[:12],
+        "routing_table_sha12": hashlib.sha256(
+            json.dumps(D.STATIC_ROUTING, ensure_ascii=False,
+                       sort_keys=True, default=str).encode()).hexdigest()[:12],
+        "topic_corpus_sha12": hashlib.sha256(
+            json.dumps(topics, ensure_ascii=False).encode()).hexdigest()[:12],
+    }
+    if _null_bad:
+        v17 = {"state": "FAIL", "value": 0.0, "n": 3, "ci": [0.0, 1.0], "min_n": 3,
+               "note": "零扰动**非零**（%s）→ 测量路径 / fixture / 隐藏状态变了，"
+                       "表中其它读数**全部作废**。环境指纹见 env_fingerprint"
+                       % ", ".join("%s=%s" % (k, v) for k, v in _null_bad.items()),
+               "nulls": _nulls, "env_fingerprint": _env_fp}
+    else:
+        v17 = {"state": "OK", "value": 1.0, "n": 3, "ci": [1.0, 1.0], "min_n": 3,
+               "note": "三个零扰动通道（空白 / 表层 / 恒等替换）**全部精确等于 0.0**"
+                       " —— 路由器是确定性的，期望值不是一个小数，是那个数本身。",
+               "nulls": _nulls, "env_fingerprint": _env_fp}
+
+    # ---- PROBE 18: 核验器的负控（**篡改记录必须被拒绝**）----
+    # @kobolsix: "add metamorphic properties and **adversarial record mutations**
+    # beside replay."
+    # → 我的差分核验 `--verify` **只有正控**：没被篡改 → 一致 → exit 0。
+    #   没有任何一行证明它能**拒绝**被篡改的记录 —— 而它是我 repo 里唯一的证据环节。
+    # → 做这个矩阵的时候**真的抓到一个 bug**：条件被篡改（weights / profile_hash）
+    #   只被打印、不影响退出码 → `verify && echo verified` 会**放行**。
+    #   已修（退出码 0/1/2/3），并用这个矩阵把它钉住。
+    try:
+        _p18 = subprocess.run([sys.executable, os.path.join(ROOT, "verifier_negctl.py"),
+                               "--json"], cwd=ROOT, capture_output=True, text=True,
+                              timeout=900)
+        p18 = json.loads(_p18.stdout)
+        if p18.get("n_inconclusive"):
+            v18 = {"state": "INCONCLUSIVE", "value": None, "n": p18.get("n", 0),
+                   "ci": [None, None], "min_n": p18.get("n", 0),
+                   "note": "核验器负控矩阵有 %d 行判不出来" % p18["n_inconclusive"],
+                   "detail": p18}
+        elif p18.get("n_fail"):
+            v18 = {"state": "FAIL", "value": 0.0, "n": p18.get("n", 0),
+                   "ci": [0.0, 1.0], "min_n": p18.get("n", 0),
+                   "note": "核验器负控矩阵有 %d 行不符预期 —— 篡改可能没被拒绝，"
+                           "或者它**因为别的原因**拒绝了" % p18["n_fail"],
+                   "detail": p18}
+        else:
+            v18 = {"state": "OK", "value": 1.0, "n": p18.get("n", 0),
+                   "ci": [1.0, 1.0], "min_n": p18.get("n", 0),
+                   "note": "核验器能按**它为什么拒绝**分类地拒绝 %d 类篡改"
+                           % len(p18.get("detectable_breaks") or []),
+                   "detail": p18}
+    except Exception as _e18:
+        v18 = {"state": "INCONCLUSIVE", "value": None, "n": 0, "ci": [None, None],
+               "min_n": 1, "note": "核验器负控矩阵跑不起来：%s" % str(_e18)[:160]}
+
     v14 = verdict(p14["named_rate"] or 0.0, p14["n"], MIN_N["probe14_deletion_promotion"],
                   note="删除名册成员后，记录**点名了这次上位**的话题比例"
                        "（前两条是现象，这一条是现象有没有被命名）")
@@ -1156,6 +1226,8 @@ def report(topics, as_json=False):
         "probe14_deletion_promotion": v14,
         "probe15_negctl_matrix": p15,
         "probe16_roster_table_consistency": v16,
+        "probe17_null_control_hard": v17,
+        "probe18_verifier_negctl": v18,
     }
     _states = {}
     for _v in _vd.values():
@@ -1219,6 +1291,8 @@ def report(topics, as_json=False):
         "probe14_deletion_promotion": p14,
         "probe15_negctl_matrix": p15,
         "probe16_roster_table_consistency": p16,
+        "probe17_null_control_hard": v17,
+        "probe18_verifier_negctl": v18,
         "probe0_null_whitespace_change_rate": round(p0, 4),
         "probe0_null_surface_change_rate": round(p0b, 4),
         "detector_false_positive_floor": round(detector_fp, 4),
@@ -1358,7 +1432,9 @@ def report(topics, as_json=False):
                      ("PROBE 13 兜底成本", v13),
                      ("PROBE 14 删除即上位", v14),
                      ("PROBE 15 负控矩阵", p15),
-                     ("PROBE 16 名册/路由表", v16)]:
+                     ("PROBE 16 名册/路由表", v16),
+                     ("PROBE 17 零扰动硬断言", v17),
+                     ("PROBE 18 核验器负控", v18)]:
 
         if _v["state"] == "OK":
             _ci = _v["ci"]

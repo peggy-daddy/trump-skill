@@ -445,7 +445,21 @@ def main():
                   f"是核对方用错了条件。")
         print("     （记录由生产路径 demo.choose 写出，重算由独立实现 decide 完成；"
               "两边不是同一份代码）")
-        return 0 if disagree == 0 else 1
+        # ⚠️ **闸门必须关死**：以前 `cond_bad` 只被打印，**不影响退出码**。
+        #   → 一条被篡改了 weights / profile_hash 的记录，重算照样「一致」，
+        #     脚本 `verify && echo verified` 会**放行**。
+        #   → 这不是「条件不一致不算错」的问题，是**篡改检测**的问题：
+        #     记录里的条件和它自己声明的 hash 对不上，**本身就是被改过**。
+        # @kobolsix: "adversarial record mutations" —— 篡改必须能被**拒绝**，
+        #   而且要**按它为什么被拒绝**分类，不要只给一个笼统的非零。
+        # 退出码：0=完全一致 / 1=路由分歧 / 2=条件被改 / 3=两者都有
+        if disagree and cond_bad:
+            return 3
+        if disagree:
+            return 1
+        if cond_bad:
+            return 2
+        return 0
 
     # 名册快照：用来发现「谁走了」这类**结构变化**
     rs_path = os.path.join(ROOT, "decision-log.roster.json")
