@@ -11,7 +11,7 @@
 Two things here are deliberately borrowable, and they have nothing to do with astrology:
 
 1. **A deterministic routing step that can be probed.** "Who opens their mouth, how loudly, in what order" is decided by a routing table, not by a model. The rule order *is* the governance model — so it can be tested, diffed and broken on purpose.
-2. **A probe harness with its own calibration floor and negative control.** `python3 swap_test.py` runs 13 probes (summary line `probes=13`, matching the sum of state_counts). PROBE 0 must read exactly 0% (zero perturbation = the detector's false-positive floor). PROBE 1 may only fail, never produce a positive reading. PROBE 2 reads non-zero on a deliberately altered routing table — a known-broken variant, because *a check that cannot fail is not a check*.
+2. **A probe harness with its own calibration floor and negative control.** `python3 swap_test.py` runs 15 probes (summary line `probes=15`, matching the sum of state_counts). PROBE 0 must read exactly 0% (zero perturbation = the detector's false-positive floor). PROBE 1 may only fail, never produce a positive reading. PROBE 2 reads non-zero on a deliberately altered routing table — a known-broken variant, because *a check that cannot fail is not a check*.
 
 ```bash
 python3 swap_test.py     # zero dependencies, ~1s
@@ -90,7 +90,7 @@ So the repo ships a reproducible swap test (zero dependencies):
   PROBE 10 turn-influence (speaker slots)   cross-turn influence   0.0%   (210 perturbations)
          +- panel membership change            56.7%   (that is the sort key, not influence)
   PROBE 11 tie-break (roster order control)  A order only 0.0%  B weights only 100.0%  C both 100.0%
-         +- condition D: with weights flat, selected three = first three in file order?  100.0%   (238/238 fallback observations, 14 permutations)
+         +- condition D: with weights flat, selected three = first three in file order?  14.3%   (238 fallback observations, 14 permutations)
 
   -- Three-state results (value / observations / interval / applicability) ------------
     PROBE 6 visible          INADEQUATE      n of 9, needs at least 10
@@ -100,7 +100,7 @@ So the repo ships a reproducible swap test (zero dependencies):
     PROBE 8 persona layer     NOT_APPLICABLE  n of 0
     PROBE 9 table parity      INADEQUATE      n of 9, needs at least 10
     PROBE 10 turn slots      OK  0.00  n of 210  95% CI 0.00 to 0.02
-    PROBE 11 follows order    OK  1.00  n of 238  95% CI 0.98 to 1.00
+    PROBE 11 follows order    OK  0.14  n of 238  95% CI 0.10 to 0.19
 
   PROBE 7  fallback (no route matched)   81.0% of questions fall back (4 real routes)
          +- second domain (ops/tech)       100.0% fall back (**0 real routes matched**)
@@ -581,7 +581,7 @@ inside the suite (baseline / reorder / swap one / profile changed / restored).
 
 ### 🔬 `swap_test.py` — the probe battery
 
-Eleven-plus probes, each with a calibration floor, a positive control, and an
+Fifteen-plus probes, each with a calibration floor, a positive control, and an
 explicit `INADEQUATE` state for when the observation count is too small to
 publish a number. Every run prints a receipt: git sha, profile hash, fixture
 version, timestamp, and a one-line summary that survives compression.

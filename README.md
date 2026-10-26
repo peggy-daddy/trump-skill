@@ -11,7 +11,7 @@
 这个仓库里有两样东西是**故意做成可偷的**，而且跟命理没关系：
 
 1. **一个可被探测的确定性路由层**。“谁开口、多大声、什么顺序”由路由表决定，不是模型决定。**规则顺序本身就是治理模型** —— 所以它可以被测试、被 diff、被故意弄坏。
-2. **自带校准地板和负控的探针组**。`python3 swap_test.py` 跑 13 个探针（摘要行 probes=13，与 state_counts 之和对得上）：PROBE 0 必须**恰好读 0%**（零扰动 = 探测器假阳性地板）；PROBE 1 **只能失败**，不能给正向读数；PROBE 2 在**故意换掉的路由表**上必须读非零（已知缺陷版）—— 因为**一个不会失败的检查不是检查**。
+2. **自带校准地板和负控的探针组**。`python3 swap_test.py` 跑 15 个探针（摘要行 probes=15，与 state_counts 之和对得上）：PROBE 0 必须**恰好读 0%**（零扰动 = 探测器假阳性地板）；PROBE 1 **只能失败**，不能给正向读数；PROBE 2 在**故意换掉的路由表**上必须读非零（已知缺陷版）—— 因为**一个不会失败的检查不是检查**。
 
 ```bash
 python3 swap_test.py     # 零依赖，约 1 秒
@@ -92,19 +92,32 @@ python3 swap_test.py
   PROBE 10 turn-influence（发言位）  跨发言位影响率  0.0%   （210 次扰动）
          └ 面板成员变动率           56.7%   （这是排序在工作，不是影响）
   PROBE 11 tie-break（名册顺序控制） A 只改顺序 0.0%  B 只改权重 100.0%  C 两者都改 100.0%
-         └ 条件D：权重全平时选中的人 = 文件行序前三？ 14.3%   （v0.14.0 起；v0.13.x 读 100.0%）
+         └ 条件D：权重全平时选中的人 = 文件行序前三？ 14.3%   （238 兜底观测，14 个排列）
+  PROBE 15 负控矩阵  5/5 行**按预期的理由**红了   可发现的破坏类：reorder_route_table, swap_persona_in_route, profile_changed
+         └ ⚠️ 绿灯**只接到这些**上；没列出来的破坏类这套测试发现不了
+  PROBE 14 删除即上位  删掉 bijian 后：10/12 个话题的**在场人员**变了（其中 10 个权重一个都没变），记录点名了 10/10 次上位
+  PROBE 13 兜底成本（面板替换）  规则面板 vs 兜底面板：平均重合 1.222/3   换掉≥2人占比 55.6%   (n=18 条命中规则的话题)
+  PROBE 12 名册键序不变性（分数全平）  选中集合变化率   0.0%   （20 次键序置换 × 21 话题）
+  PROBE 9  table parity             ✅ 两份路由表一致
+
+  RESOLUTION  21 个话题 → 5 个不同的面板（5 条不同路由规则）
 
   ── 三态结果（值 / 观测数 / 区间 / 适用性）────────────────────────
-    PROBE 6 可见           INADEQUATE     n=9    需要 n>=10
-    PROBE 6 条件性          INADEQUATE     n=4    需要 n>=10
-    PROBE 7 领域A          OK   值=0.81  n=21  95%CI=[0.58, 0.95]
-    PROBE 7 领域B          OK   值=1.00  n=12  95%CI=[0.74, 1.00]
-    PROBE 8 人格层          NOT_APPLICABLE n=0
-    PROBE 9 表一致          INADEQUATE     n=9    需要 n>=10
-    PROBE 10 发言位影响      OK   值=0.00  n=210 95%CI=[0.00, 0.02]
-
-    PROBE 11 跟着行序走      OK   值=0.14  n=238 95%CI=[0.10, 0.19]
-    PROBE 12 键序不变性      OK   值=0.00  n=420 95%CI=[0.00, 0.01]
+    PROBE 6 可见           INADEQUATE    n=9    需要 n>=10   可见不一致率（含兜底对）
+    PROBE 6 条件性          INADEQUATE    n=4    需要 n>=10   只在两句都命中真实路由的对里算
+    PROBE 7 领域A          OK          值=0.8095  n=21   95%CI=[0.58, 0.95]     min_n=10
+    PROBE 7 领域B          OK          值=1.0     n=12   95%CI=[0.74, 1.00]     min_n=10
+    PROBE 8 人格层          NOT_APPLICABLE n=0    需要 n>=1    人格层从未被进入 → 零观测，不是结果
+    PROBE 9 表一致          INADEQUATE    n=9    需要 n>=10   路由表条目数决定了这个检验能承载多少结论
+    PROBE 10 发言位影响       OK          值=0.0     n=210  95%CI=[0.00, 0.02]     min_n=10
+    PROBE 11 跟着行序走       OK          值=0.1429  n=238  95%CI=[0.10, 0.19]     min_n=10
+    PROBE 12 键序不变性       OK          值=0.0     n=420  95%CI=[0.00, 0.01]     min_n=20
+    PROBE 13 兜底成本        OK          值=0.5556  n=18   95%CI=[0.31, 0.78]     min_n=12
+    PROBE 14 删除即上位       OK          值=1.0     n=12   95%CI=[0.74, 1.00]     min_n=12
+    PROBE 15 负控矩阵        OK          值=1.0     n=5    95%CI=[?, ?]           min_n=5
+    PROBE 16 名册/路由表      OK          值=1.0     n=21   95%CI=[0.84, 1.00]     min_n=10
+    PROBE 17 零扰动硬断言      OK          值=1.0     n=3    95%CI=[1.00, 1.00]     min_n=3
+    PROBE 18 核验器负控       OK          值=1.0     n=6    95%CI=[1.00, 1.00]     min_n=6
 
   PROBE 7  fallback（没命中路由）     81.0% 的问题落到兜底（4 条真实路由规则）
          └ 第二领域（运维/技术）      100.0% 的问题落到兜底（**0 条真实路由规则**）
@@ -134,7 +147,9 @@ python3 swap_test.py
   ⚠️ **但 PROBE 11 证明这句话当时是混淆的**：PROBE 5 同时动了**两个**变量
   （权重偏好 + tie-break 规则），所以它只能覆盖其中一个。PROBE 11 把它们拆开：
   - **条件 A（只改名册顺序，权重不动）= 0.0%** → 现在的分数互不相同，JSON 键顺序平时是惰性的。
-  - **条件 D（权重全平 + 14 种名册顺序）→ 选中的三个人 100% = 文件里的行序前三**（n=238，95%CI [0.98, 1.00]）。
+  - **条件 D（权重全平 + 14 种名册顺序）→ 选中的三个人 14.3% = 文件里的行序前三**（n=238 兜底观测，95%CI [0.10, 0.19]）。
+    ⚠️ **这个数不是 100%**：v0.14.0 起 profile 里有显式 `roster_rank`，键顺序不再是唯一决定因素；
+    剩下没跟着行序走的那部分才是键序的**残余**影响。
   - → **Python 的 sort 是稳定的** → 分数相等时，tie-break 就是 `trump-profile.json` 的**键顺序**。
     **谁重排这个 JSON 的键，谁就改了「谁先开口」，而 diff 里只看到一行行挪动的字段。**
   - → 这是一条**没写出来的治理模型**：比权重更隐蔽，因为它不改变任何值，只改变顺序。
@@ -212,11 +227,11 @@ actually read — source, date, scope."
 
 ```
   ── 运行回执（这份数字读的是什么）──────────────────────────────
-     git_sha      : 534bd78  (工作树有改动)
+     git_sha      : 3b5617e  (工作树有改动)
      profile_hash : 97bc904e17d4   (trump-profile.json / tenGods)
      fixture      : free-topics-v1 + canonical-v1  (自由语料 21 条 + 规范语料 21 条)
-     started      : 2026-10-26T02:38:09+08:00
-     摘要行        : probes=10 | OK=6 INADEQUATE=3 NOT_APPLICABLE=1 | worst_claim_state=INADEQUATE | zero_observation=1
+     started      : 2026-10-26T17:18:47+08:00
+     摘要行        : probes=15 | OK=11 INADEQUATE=3 NOT_APPLICABLE=1 FAIL=0 INCONCLUSIVE=0 | worst_claim_state=INADEQUATE | zero_observation=1
 ```
 
 **最后那行是抗压缩的。** @kai_the_familiar 说的失败模式不是检查在骗人，
