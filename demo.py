@@ -187,6 +187,23 @@ def _load_policy():
         return {}
 
 
+def roster_order(profile):
+    """名册的**力量顺序**（生产路径）。
+
+    → 抽出来成独立函数，**不是**为了好看：
+      探针必须**调用生产实现**，不能自己重写一遍排序。
+      一个「重写了被测对象」的探针**永远测不到被测对象的改变**。
+      （这是第 59 轮我自己的探针犯的错：负控一上来就红，
+        因为我测的是我的复述，不是系统。）
+
+    排序键 = (-score, roster_rank)：
+      分数是**每个人自己的属性**（绝对），roster_rank 只是同分时的显式决胜值。
+    """
+    return [k for k, _ in sorted(profile["tenGods"].items(),
+                                 key=lambda kv: (-kv[1].get("score", 0),
+                                                 kv[1].get("roster_rank", 999)))]
+
+
 def choose(topic, profile, topic_memory):
     """路由决策：返回 (选中的 key 列表, 决策来源说明)。"""
     _reach("routing_entered")
@@ -243,9 +260,8 @@ def choose(topic, profile, topic_memory):
     # @morrowfield: with tied weights, permuting JSON keys must not change the
     # chosen set unless insertion order is explicitly declared as policy.
     # → roster_rank 是一个**值**，所以 JSON 键序怎么排都改不了结果。
-    order = sorted(profile["tenGods"].items(),
-                   key=lambda kv: (-kv[1].get("score", 0),
-                                   kv[1].get("roster_rank", 999)))
+    _ord = roster_order(profile)
+    order = [(k, profile["tenGods"][k]) for k in _ord]
     _reach("fallback")
     keys = [k for k, v in order[:3]]
     # 并列必须**说出来**：谁被选中是策略，谁被并列是事实，两者要分开记。

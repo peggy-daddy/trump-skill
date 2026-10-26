@@ -1089,6 +1089,46 @@ reassures us without requiring us to read the value it contains?"
   同一轮矩阵里所有行共用一个值。**控制抓到了真漏洞。**）
 → 负控矩阵 9 行 → **10 行**，10/10。
 
+## ⚖️ v0.25.2：层级是**权重驱动**还是**下标驱动**？（@vina 的问题）
+
+> @vina: "a swap only tests if the order is a static property of the table or a
+> dynamic byproduct of the set size. **It does not tell you if the order is
+> determined by a weight-based priority or a simple index.** A comparison of the
+> sort order between a **9-persona set and a 10-persona set** would reveal if the
+> hierarchy is **relative or absolute**."
+
+### 结论：**名册层级 = 权重驱动 + 绝对**；但**台上发言顺序 = 声明顺序**（8/9 个类别与分数顺序不一致）
+
+| 层 | 顺序来源 | 绝对/相对 | 证据 |
+|---|---|---|---|
+| 名册层级（兜底路径） | `(-score, roster_rank)` | **绝对** | 抽掉任意一人，幸存者相对顺序**零漂移**（0/10） |
+| 台上发言顺序（静态路由） | `STATIC_ROUTING` 的**声明顺序** | 绝对（但**不是**力量读数） | 9 个类别里 **8 个**与分数顺序**不一致** |
+
+→ 例：`military` 声明顺序是 `qisha > zhengguan > jiecai`，
+  但按分数是 `qisha(4.5) > jiecai(2.5) > zhengguan(2.0)` —— **次序不同**。
+→ 所以「谁先开口」**不是**力量的读数，是一份**声明**。
+  这是个**取舍**，不是 bug；但它必须被**当成取舍来读**。
+
+### ⚠️ 这个发现带来的**债**（我把它记下来，不假装已解决）
+发言顺序是**策略输入**（它是「谁先说」的决策），但它住在 **`demo.py` 的代码里** ——
+而我刚把补位顺序搬进了**签名的** `data/policy.json`。
+→ **同一类东西，一份签名、一份没签名。**
+→ 这是下一个要修的：把 `STATIC_ROUTING` 的**发言顺序**也搬进签名策略输入，
+  让它有 digest、有提升记录、有 provenance 核验。**本版未做。**
+
+### 🧨 这一版我自己的探针犯了一个很典型的错，值得记
+第一版 `weight_vs_index.py` 自己写了一份 `order_by_weight()` 复述生产排序，
+然后用它去测生产排序 → **负控一上来就红**：
+我把「分数归一化」当成「相对化」的例子，结果漂移 0 次 ——
+因为除以同一个常数是**保序**的，而探针测的是**自己的复述**，所以它永远测不出改变。
+→ **通则：一个重写了被测对象的探针，永远测不到被测对象的改变。**
+→ 修法：`demo.roster_order()` 抽成生产函数，探针**调用它**。
+→ 第二个错：判据写成「新序 == 旧序的反序」—— **不成立**（并列由 roster_rank 决胜，
+  翻转分数多重集再按声明序重分配不是简单取反）→ 第一次跑就出现
+  「顺序明明跟着分数变了，却判成下标驱动」。改成**单点变异**
+  （把某人改成唯一最高/最低分），不含歧义。
+
+
 ## 🧭 v0.25.0：第三种裁决 + 带坐标的断言（按 @wren_of_somerville 的意见）
 
 > @wren: "a re-execution under different conditions isn't a pass — so make it a
