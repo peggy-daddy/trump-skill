@@ -111,6 +111,7 @@ EXIT_PROV = 4      # provenance 断（策略/资格集/代码 版本对不上，
 EXIT_RECOND = 8    # 重演条件不同（第三种裁决：不是路由分歧）
 EXIT_ORDER = 16    # 因果顺序倒置（授权晚于裁决）
 EXIT_INTEGRITY = 32  # 记录自述摘要对不上（记录被改过）
+EXIT_UNVERIFIABLE = 64  # 记录**核不了**（引用了不存在的名册成员）—— 既非通过也非失败
 
 
 def _run(args, cwd=ROOT):
@@ -135,6 +136,46 @@ def _write(rows, path):
     with open(path, "w", encoding="utf-8") as f:
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
+
+
+def mut_roster_drop(rows, sent=None):
+    """**从记录的名册里删掉一个人**（不动 profile_hash / weights），并重封。
+
+    → 这一行是**专为回答 @wren 的追问**而造的：
+      「一根轴如果从来不能单独亮，它就不是独立裁决，只是另一根轴的标签。」
+      以前矩阵里 bit1（条件被改）**只在 exit 10/11 里出现**，
+      而那两处**必然**同时带 bit3 → 看起来 bit1 只是 bit3 的标签。
+      → 实测（v0.27.0）：**bit1 能单独亮**。
+        条件：改「重建输入」而不改「被比较的摘要」——
+        删名册成员 → 重建出来的 hash 与记录自述的 profile_hash 对不上（bit1 亮），
+        而 profile_hash 本身没被改 → 与当前环境仍然一致（bit3 不亮）。
+      → 这一行就是那个**证明**：exit=2，**只有 [COND]**。
+    """
+    out = [dict(r) for r in rows]
+    ro = list(out[0].get("roster_order") or [])
+    dropped = None
+    if ro:
+        # ⚠️ **被删掉的人由 nonce 决定** → 每轮不同 →
+        #   报告里出现的名字也必须每轮不同 →
+        #   证明核验器读的是**那一格**，而不是打印一个固定字面量。
+        _idx = int(hashlib.sha256((sent or "x").encode()).hexdigest(), 16) % len(ro)
+        dropped = ro[_idx]
+        out[0]["roster_order"] = [k for k in ro if k != dropped]
+    return _reseal(out), (dropped or "")
+
+
+def mut_roster_ghost(rows, sent=None):
+    """名册里塞一个**当前名册不存在的人**。
+
+    → 以前这会让核验器**整个崩掉**（KeyError）→ 退出码 1 = bit0「路由分歧」
+      → **一次崩溃伪装成了一次指控**，而且后面的记录一条都没核。
+    → 现在它必须是一个**被命名的结论**：[UNVERIFIABLE]（bit6 = 64）。
+    → 哨兵 = 那个幽灵的名字 → 断言报告里**真的出现了它**。
+    """
+    out = [dict(r) for r in rows]
+    out[0]["roster_order"] = list(out[0].get("roster_order") or []) + [
+        sent or "__SENTINEL_tamper_roster_ghost__"]
+    return _reseal(out), "名册里塞一个不存在的人"
 
 
 def mut_chosen(rows, sent=None):
@@ -272,6 +313,13 @@ ROWS = [
     ("tamper_profile_hash", "改写条件 hash", EXIT_COND | EXIT_RECOND, "[COND]", mut_profile_hash, "tamper_profile_hash", "normal"),
     ("tamper_weights", "改写权重", EXIT_COND | EXIT_RECOND, "[COND]", mut_weights, "tamper_weights", "normal"),
     ("tamper_both", "同时改路由与条件", EXIT_BOTH | EXIT_RECOND, "[DIFF]", mut_both, "tamper_both", "normal"),
+    # ⭐ 这一行让 bit1 **单独**亮一次（只改重建输入，不改被比较的摘要）
+    #   → 回答 @wren：「每一根轴都必须能单独亮，否则它不是独立裁决」。
+    ("tamper_roster_drop", "从名册删掉一个人（不动 hash/权重）", EXIT_COND, "[COND]",
+     mut_roster_drop, "tamper_roster_drop", "named"),
+    # ⭐ 崩溃必须变成**被命名的结论**，不能伪装成「路由分歧」
+    ("tamper_roster_ghost", "名册里塞一个不存在的人", EXIT_UNVERIFIABLE, "[UNVERIFIABLE]",
+     mut_roster_ghost, "tamper_roster_ghost", "normal"),
     # ⚠️ 改写 policy_digest / eligible_digest 会**同时**触发两根轴：
     #   bit2 provenance（策略对不上签名）+ bit3 重演条件不同（条件确实变了）。
     #   → 期望值是 **12 = 4|8**，不是 4。这不是放宽断言，是**更精确**：
@@ -338,13 +386,14 @@ def _classify(rc, out, expect, marker, sentinel=None, kind="normal"):
     #   bit3=重演条件不同 / bit4=因果顺序倒置 / bit5=记录自述摘要对不上
     #   → 合法取值 0~63。老契约 0~15 一个数都没改，只多了两根轴。
     _bits = (0, EXIT_DIFF, EXIT_COND, EXIT_BOTH, EXIT_PROV, EXIT_RECOND,
+             EXIT_UNVERIFIABLE,
              EXIT_ORDER, EXIT_INTEGRITY)
     _ok_exits = set()
     for _b in _bits:
         for _c in _bits:
             _ok_exits.add(_b | _c)
     if rc not in _ok_exits:
-        return "INCONCLUSIVE", "退出码 %s 不在契约里（0~15 位标志）—— 无法判断" % rc
+        return "INCONCLUSIVE", "退出码 %s 不在契约里（0~127 位标志）—— 无法判断" % rc
     if rc != expect:
         return "FAIL", "退出码 %s，期望 %s —— 它因为**别的原因**红了" % (rc, expect)
     if marker not in out:
@@ -354,6 +403,45 @@ def _classify(rc, out, expect, marker, sentinel=None, kind="normal"):
                 " → 核验器没有把**被改的那一格**读出来，它是在别处读到了差异"
                 "（**控制通过了，却没证明走过那条路径**）" % sentinel)
     return "PASS", "按预期的方式红了，且**哨兵被观测到**"
+
+
+def check_bits_independently_reachable(rows):
+    """**每一根轴都必须能单独亮过一次**（@wren_of_somerville 的追问，v0.27.0 变成机器检查）
+
+    @wren 的话：
+    > "two bits firing from one tamper is only honest if the matrix also shows
+    >  each bit firing alone somewhere. If exit 10 is the only place bit1 fires,
+    >  bit1 is not independently a verdict — it's a label on bit3."
+
+    → 以前这句话**只能靠人读表格**。现在它是一个**断言**：
+      扫描全部行，凡 bitN 亮过，就必须在某一行里**只有** bitN 亮（exit == 该位）。
+      有任何一根轴**从来没单独亮过** → 判红，并明说它不是独立裁决。
+    → 实测（v0.27.0）：bit1 以前**只在 exit 10/11 里出现**，两处都必带 bit3
+      → 按 @wren 的口径，bit1 **当时**确实只是 bit3 的标签。
+      → 修法不是改口径，是**造出那个变异**：
+        删掉记录名册里的一个人 → 重建输入变了（bit1 亮）
+        而被比较的摘要没变（bit3 不亮）→ exit=2，**只有 [COND]**。
+    """
+    BITS = [(EXIT_DIFF, "bit0 路由分歧"), (EXIT_COND, "bit1 条件被改"),
+            (EXIT_PROV, "bit2 provenance 断"), (EXIT_RECOND, "bit3 重演条件不同"),
+            (EXIT_ORDER, "bit4 因果顺序倒置"), (EXIT_INTEGRITY, "bit5 自述摘要对不上"),
+            (EXIT_UNVERIFIABLE, "bit6 记录核不了")]
+    out = []
+    for bit, name in BITS:
+        hits = [r for r in rows if (r.get("actual_exit") or 0) & bit]
+        solo = [r for r in hits if (r.get("actual_exit") or 0) == bit]
+        out.append({
+            "bit": bit, "name": name,
+            "n_rows_firing": len(hits),
+            "solo_rows": [r["break_class"] for r in solo],
+            "ok": bool(solo),
+            "why": ("有 %d 行单独亮了它（如 %s）→ 它是**独立裁决**"
+                    % (len(solo), ", ".join(r["break_class"] for r in solo)))
+            if solo else
+            ("它在 %d 行里亮过，但**从来没有单独亮过** → 按 @wren 的口径，"
+             "它**不是独立裁决**，只是别的轴的标签" % len(hits)),
+        })
+    return out
 
 
 def run_matrix():
@@ -377,6 +465,47 @@ def run_matrix():
                 #   否则 [ORDER] 轴不触发（它比较的是时间，不是字符串形状）。
                 #   → 每次运行一个**不同的远古日期**，断言查的是**那个值**。
                 sentinel = sentinel_for_order()
+            if kind == "named":
+                # 这一行的「哨兵」= **被改的那一格的实际值**（不是 nonce 字符串）。
+                #   → 报告里必须出现**那个值**（被删掉的那个人的名字）。
+                # → 跑两轮，被删的人**每轮不同**（由 nonce 决定）→
+                #   报告里出现的名字也必须每轮不同 →
+                #   证明核验器读的是**那一格**，不是打印一个固定字面量。
+                vals = []
+                for _i in range(2):
+                    _nonce = sentinel_for(sent_cls)
+                    _t, _lit = mut(base, _nonce)
+                    _p = os.path.join(tmp, "%s_%d.jsonl" % (cls, _i))
+                    _write(_t, _p)
+                    _rc, _o = _run(["decision_log.py", "--verify", _p])
+                    vals.append((_lit, _rc, _o))
+                lit1, lit2 = vals[0][0], vals[1][0]
+                rc, out = vals[0][1], vals[0][2] + vals[1][2]
+                if rc != expect:
+                    status, why = "FAIL", ("退出码 %s，期望 %s —— 它因为**别的原因**红了"
+                                           % (rc, expect))
+                elif marker not in out:
+                    status, why = "FAIL", ("退出码对，但缺少理由标记 %s —— 不知道为什么拒绝的"
+                                           % marker)
+                elif not lit1 or lit1 not in out:
+                    status, why = "FAIL", ("报告里找不到被改的那一格（%s）→ 核验器没有"
+                                           "**把被改的那一格读出来**，它是在别处读到了差异"
+                                           "（**控制通过了，却没证明走过那条路径**）" % lit1)
+                elif lit1 == lit2:
+                    status, why = "FAIL", ("两次被删的是**同一个人**（%s）→ 断言没有跟着"
+                                           "nonce 走，哨兵退化成固定字面量" % lit1)
+                else:
+                    status, why = "PASS", ("按预期的方式红了，且**被改的那一格被观测到**"
+                                           "（本轮 %s，上一轮 %s，两轮不同 → "
+                                           "核验器读的是那一格，不是固定字面量）"
+                                           % (lit1, lit2))
+                rows.append({"break_class": cls, "what": what,
+                             "expected_exit": expect, "actual_exit": rc,
+                             "expect_marker": marker, "marker_seen": marker in out,
+                             "sentinel": lit1, "sentinel_seen": lit1 in out,
+                             "status": status, "pass": status == "PASS", "why": why,
+                             "evidence": ("run1=%s / run2=%s" % (lit1, lit2))[:160]})
+                continue
             if kind == "rotate":
                 # 两次独立运行 → 两个哨兵 → 必须**不同**
                 vals = []
@@ -424,10 +553,12 @@ def run_matrix():
     n_fail = sum(1 for r in rows if r["status"] == "FAIL")
     n_inc = sum(1 for r in rows if r["status"] == "INCONCLUSIVE")
     return {"rows": rows, "n": len(rows),
+            "bit_independence": check_bits_independently_reachable(rows),
             "n_pass": sum(1 for r in rows if r["status"] == "PASS"),
             "n_fail": n_fail, "n_inconclusive": n_inc,
             "detectable_breaks": [r["break_class"] for r in rows if r["pass"]],
-            "exit_contract": [EXIT_OK, EXIT_DIFF, EXIT_COND, EXIT_BOTH, EXIT_PROV, EXIT_RECOND]}
+            "exit_contract": [EXIT_OK, EXIT_DIFF, EXIT_COND, EXIT_BOTH, EXIT_PROV,
+                              EXIT_RECOND, EXIT_UNVERIFIABLE]}
 
 
 def main():
@@ -435,9 +566,13 @@ def main():
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
     res = run_matrix()
+    # ⚠️ 退出码同时受**矩阵**与**属性检查**约束：
+    #   「每一根轴都必须能单独亮过一次」不成立 → 也是失败。
+    _bits_ok = all(b["ok"] for b in res.get("bit_independence") or [])
+    _ok = (res["n_fail"] == 0 and res["n_inconclusive"] == 0 and _bits_ok)
     if args.json:
         print(json.dumps(res, ensure_ascii=False, indent=2))
-        return 0 if (res["n_fail"] == 0 and res["n_inconclusive"] == 0) else 1
+        return 0 if _ok else 1
     print("[VNEGCTL] 核验器负控矩阵 —— 这套测试**能发现哪些篡改**")
     for r in res["rows"]:
         flag = {"PASS": "OK  ", "FAIL": "FAIL", "INCONCLUSIVE": "????"}[r["status"]]
@@ -445,9 +580,13 @@ def main():
               f"期望 exit={r.get('expected_exit')} 实际 exit={r.get('actual_exit')}"
               f"  {r.get('why', '')}")
     print(f"[VNEGCTL] {res['n_pass']}/{res['n']} 行符合预期")
+    print("[VNEGCTL] —— 属性检查：**每一根轴都必须能单独亮过一次**（@wren 的追问）")
+    for b in res.get("bit_independence") or []:
+        print(f"  {'OK  ' if b['ok'] else 'FAIL'} {b['name']:24} "
+              f"亮过 {b['n_rows_firing']} 行，单独亮过 {len(b['solo_rows'])} 次  {b['why']}")
     print(f"[VNEGCTL] 可发现的篡改类：{', '.join(res['detectable_breaks'])}")
     print("[VNEGCTL] ⚠️ 绿灯**只接到这些**上；没列出来的篡改类，这套测试发现不了。")
-    return 0 if (res["n_fail"] == 0 and res["n_inconclusive"] == 0) else 1
+    return 0 if _ok else 1
 
 
 if __name__ == "__main__":

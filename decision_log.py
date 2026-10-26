@@ -637,7 +637,7 @@ def main():
 
     if args.verify:
         rows = [json.loads(l) for l in open(args.verify, encoding="utf-8") if l.strip()]
-        agree = disagree = cond_bad = recond_bad = 0
+        agree = disagree = cond_bad = recond_bad = unver_bad = 0
         # ---- 第三种裁决：[RECOND] **重演条件不同** ----
         # @wren: "a re-execution under different conditions isn't a pass — so make it
         #  a schema property: the re-run row carries (conditions_digest,
@@ -862,54 +862,85 @@ def main():
             #     条件相同 + 结果相同 → 一致
             if _ri in _drifted_disk:
                 continue
-            p = json.loads(json.dumps(profile))
-            p["tenGods"] = {k: dict(gods[k]) for k in row.get("roster_order", base_order)}
-            # **从记录里重建权重** —— 记录里有 weights，那是当时真正用的力量值。
-            # 不用命令行上的 --flatten 去猜，因为那会拿「我这次的条件」
-            # 去核对「它那次的条件」。
-            _w = row.get("weights") or {}
-            _applied = 0
-            for k, v in _w.items():
-                if k in p["tenGods"]:
-                    p["tenGods"][k]["score"] = v
-                    _applied += 1
-            # 条件一致性单独判：条件不一致 ≠ 路由不一致。
-            _h = hashlib.sha256(
-                json.dumps(p["tenGods"], ensure_ascii=False, sort_keys=True).encode()
-            ).hexdigest()[:12]
-            if row.get("profile_hash") and row["profile_hash"] != _h:
-                cond_bad += 1
-                print("[COND]", row["topic"],
-                      "记录的条件与重算条件不一致: recorded_hash", row["profile_hash"],
-                      "recomputed_hash", _h)
-                # ⚠️ **报告必须说出「我这次重算时实际用到的条件值」**。
-                #   为什么：核验器是**从记录里的 weights 重建条件**的
-                #   （`p["tenGods"][k]["score"] = v`），所以拿「记录里的 weights」
-                #   去比「重建出来的 weights」是**同义反复** —— 永远相等，
-                #   什么也证明不了。我一开始就是这么写的，然后哨兵断言直接把它判红。
-                #   → 能打印的、并且**有信息量的**，是**重建时真正用进去的那份值**：
-                #     它出现在报告里，就证明**那个被改的值确实在测量路径上**
-                #     （重算就是拿它跑的），而不只是「某个 hash 对不上」。
-                print("[COND]", row["topic"], "field=weights",
-                      "reconstruction_used:", json.dumps(_w, ensure_ascii=False,
-                                                          sort_keys=True))
-            mine = decide(row["topic"], p, topic_memory)
-            if mine["chosen"] == row["chosen"] and mine["source"] == row["source"]:
-                agree += 1
-            else:
-                disagree += 1
-                # ⚠️ **必须点名「哪个字段」不一致**，而且要把**记录里的那个值**打出来。
-                #   原因：负控矩阵要断言「核验器**真的读到了被篡改的那个字段**」，
-                #   而不是只断言「退出码变了」。只打印 chosen 的话，
-                #   改 `source` 的篡改也会打出 [DIFF]（它**看起来**通过了），
-                #   但报告里根本不会出现被改的值 —— **控制通过了，却没证明走过那条路径**。
-                #   → 所以这里按字段分别报告，并**原样打印记录值**。
-                if mine["chosen"] != row["chosen"]:
-                    print("[DIFF]", row["topic"], "field=chosen",
-                          "recorded:", row["chosen"], "recomputed:", mine["chosen"])
-                if mine["source"] != row["source"]:
-                    print("[DIFF]", row["topic"], "field=source",
-                          "recorded:", row["source"], "recomputed:", mine["source"])
+            # ---- [UNVERIFIABLE] 这条记录**核不了**（不是"核过了没问题"）----
+            # ⚠️ v0.27.0 实测抓到的真缺陷：
+            #   记录里的 roster_order 引用了一个**当前名册里不存在的人**时，
+            #   `{k: dict(gods[k]) for k in roster_order}` 直接 **KeyError** →
+            #   整个 verify 崩掉 → **后面所有记录一条都没核**，
+            #   而且进程退出码 = 1 = **bit0「路由分歧」**的取值 →
+            #   **一次崩溃伪装成了一次指控**（@chittygemzy 说的「无名失败」，
+            #   在核验器自己身上也成立）。
+            # → 修法：每行单独 try，异常 → 记 [UNVERIFIABLE]（bit6），
+            #   **继续核下一行**。崩溃不再是结论，而是**一个被命名的结论**。
+            try:
+                p = json.loads(json.dumps(profile))
+                p["tenGods"] = {k: dict(gods[k]) for k in row.get("roster_order", base_order)}
+                # **从记录里重建权重** —— 记录里有 weights，那是当时真正用的力量值。
+                # 不用命令行上的 --flatten 去猜，因为那会拿「我这次的条件」
+                # 去核对「它那次的条件」。
+                _w = row.get("weights") or {}
+                _applied = 0
+                for k, v in _w.items():
+                    if k in p["tenGods"]:
+                        p["tenGods"][k]["score"] = v
+                        _applied += 1
+                # 条件一致性单独判：条件不一致 ≠ 路由不一致。
+                _h = hashlib.sha256(
+                    json.dumps(p["tenGods"], ensure_ascii=False, sort_keys=True).encode()
+                ).hexdigest()[:12]
+                if row.get("profile_hash") and row["profile_hash"] != _h:
+                    cond_bad += 1
+                    print("[COND]", row["topic"],
+                          "记录的条件与重算条件不一致: recorded_hash", row["profile_hash"],
+                          "recomputed_hash", _h)
+                    # ⚠️ **报告必须说出「我这次重算时实际用到的条件值」**。
+                    #   为什么：核验器是**从记录里的 weights 重建条件**的
+                    #   （`p["tenGods"][k]["score"] = v`），所以拿「记录里的 weights」
+                    #   去比「重建出来的 weights」是**同义反复** —— 永远相等，
+                    #   什么也证明不了。我一开始就是这么写的，然后哨兵断言直接把它判红。
+                    #   → 能打印的、并且**有信息量的**，是**重建时真正用进去的那份值**：
+                    #     它出现在报告里，就证明**那个被改的值确实在测量路径上**
+                    #     （重算就是拿它跑的），而不只是「某个 hash 对不上」。
+                    print("[COND]", row["topic"], "field=weights",
+                          "reconstruction_used:", json.dumps(_w, ensure_ascii=False,
+                                                              sort_keys=True))
+                    # ⚠️ **必须点名「名册」那一格**（v0.27.0 补）：
+                    #   删掉一个人是**唯一**能让 bit1 单独亮的篡改，
+                    #   而报告里如果只有两个 hash，读者**看不到是名册少了人**。
+                    #   → 打印「记录里的名册」与「重建时真正用进去的名册」两份。
+                    print("[COND]", row["topic"], "field=roster_order",
+                          "recorded_roster:", json.dumps(row.get("roster_order"),
+                                                        ensure_ascii=False),
+                          "reconstruction_used_roster:",
+                          json.dumps(list(p["tenGods"].keys()), ensure_ascii=False))
+                mine = decide(row["topic"], p, topic_memory)
+                if mine["chosen"] == row["chosen"] and mine["source"] == row["source"]:
+                    agree += 1
+                else:
+                    disagree += 1
+                    # ⚠️ **必须点名「哪个字段」不一致**，而且要把**记录里的那个值**打出来。
+                    #   原因：负控矩阵要断言「核验器**真的读到了被篡改的那个字段**」，
+                    #   而不是只断言「退出码变了」。只打印 chosen 的话，
+                    #   改 `source` 的篡改也会打出 [DIFF]（它**看起来**通过了），
+                    #   但报告里根本不会出现被改的值 —— **控制通过了，却没证明走过那条路径**。
+                    #   → 所以这里按字段分别报告，并**原样打印记录值**。
+                    if mine["chosen"] != row["chosen"]:
+                        print("[DIFF]", row["topic"], "field=chosen",
+                              "recorded:", row["chosen"], "recomputed:", mine["chosen"])
+                    if mine["source"] != row["source"]:
+                        print("[DIFF]", row["topic"], "field=source",
+                              "recorded:", row["source"], "recomputed:", mine["source"])
+            except (KeyError, TypeError, ValueError) as e:
+                unver_bad += 1
+                _ghost = [k for k in (row.get("roster_order") or [])
+                          if k not in gods]
+                print("[UNVERIFIABLE]", row.get("topic"),
+                      "field=roster_order",
+                      "error:", repr(e),
+                      "not_in_current_roster:", _ghost,
+                      "→ 这条记录引用了**当前名册里不存在的人** → "
+                      "**核不了**（不是「核过了没问题」）")
+
         print(f"[VERIFY] 一致 {agree} / 不一致 {disagree} / 不可比 {len(_drifted_disk)} / 共 {len(rows)}")
         if cond_bad:
             print(f"[COND] 条件不一致 {cond_bad} 条 —— 这些**不是**路由分歧，"
@@ -940,7 +971,8 @@ def main():
         #                     bit3=重演条件不同（第三种裁决）
         #                     bit4=因果顺序倒置（授权晚于裁决）
         #                     bit5=记录自述摘要对不上（记录被改过）
-        #   → 合法取值 0~63。老契约 0~15 一个数都没改，只多了两根轴。
+        #                     bit6=记录核不了（引用了不存在的名册成员）
+        #   → 合法取值 0~127。老契约 0~3 一个数都没改，只多了三根轴。
         if order_bad:
             print(f"[ORDER] 因果顺序倒置 {order_bad} 条 —— 裁决**早于**授权，"
                   f"这些记录的授权不成立。")
@@ -950,9 +982,13 @@ def main():
         if integrity_legacy:
             print(f"[INTEGRITY] 旧记录 {integrity_legacy} 条（没有自述摘要）—— "
                   f"**没被查过**，不等于**查过了没问题**。")
+        if unver_bad:
+            print(f"[UNVERIFIABLE] {unver_bad} 条**核不了** —— "
+                  f"这些记录**没有被核验过**，既不算通过也不算失败。")
         return ((1 if disagree else 0) | (2 if cond_bad else 0)
                 | (4 if prov_bad else 0) | (8 if recond_bad else 0)
-                | (16 if order_bad else 0) | (32 if integrity_bad else 0))
+                | (16 if order_bad else 0) | (32 if integrity_bad else 0)
+                | (64 if unver_bad else 0))
 
     # 名册快照：用来发现「谁走了」这类**结构变化**
     rs_path = os.path.join(ROOT, "decision-log.roster.json")
