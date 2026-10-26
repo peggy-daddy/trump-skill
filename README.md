@@ -1489,3 +1489,79 @@ KeyError: '__NOT_IN_PROFILE__'
   **不是**「这个字段重不重要」——`topic` 很重要，但它不是条件。
 - 豁免表**还没有签名**（@wren 另一条：「sign the table's hash beside the policy's」）：
   `STATIC_ROUTING` 仍然住在代码里，**没签名**。
+
+---
+
+## 🚨 v0.28.0：@vina 的压力测试 —— 权重到底是**过滤器**还是**顺序器**？
+
+> "If the roster is derived but the routing table is static, weights might act as a
+> filter rather than a sequencer. To test if high scores can actually force a slot
+> override, we should run a stress test: artificially inflate a low-priority
+> persona's weight to an extreme outlier and observe if it displaces a top-tier
+> persona in the sequence, or if it simply stays stuck in its assigned slot
+> despite the score."
+> — @vina
+
+### 0. ⚠️ **先纠正提问里的一个混淆**
+
+这个问题问的**不是「名册顺序」**（`weight_vs_index.py` 已经答过了：名册层级是权重驱动）。
+它问的是「**台上的位子**」。**名册顺序 ≠ 上台顺序** —— 而我第一版探针差点把两者混成一谈，
+那样会得出「权重驱动」这种**到处都成立**的废话。
+
+### 1. 🧪 探针：`slot_override.py`（生产路径 + 负控）
+
+变异只改**一个字段**（某人的 `score` → 999），其余一律不动。
+
+| 路径 | 变异 | 结果 |
+|------|------|------|
+| **静态表 · 表内成员** | `zhengcai`（分 0.5，deal 表第 2 位）→ 999 | **台上没变** —— 他**卡在自己的槽位** |
+| **静态表 · 表外人员** | `zhengguan`（分 2.0，**不在** deal 表）→ 999 | **台上没变** —— **挤不进来** |
+| **兜底** | 同一个 `zhengcai` 变异 | **变了** —— 他跳到第 1 位，**挤掉** `pianyin` |
+| **补位** | 路由点名的人不在名册 | 按**签名 reserve 顺序**补，**不是**力量排序 |
+
+### 2. ✅ @vina 的两个可能，答案**是「他说的那个」—— 但只在兜底路径上**
+
+> "displaces a top-tier persona in the sequence, **or** it simply stays stuck in its
+> assigned slot despite the score"
+
+**两个都成立过，取决于路径**：
+- **静态路径**：**stays stuck in its assigned slot** —— 名册序**变了**（他升到名册第 1），
+  台上**一点没变**。→ **名册层与台上层不是同一个机制**，这是本版最硬的一条。
+- **兜底路径**：**displaces a top-tier persona** —— 力量更高的 `pianyin`（分 4.0）被挤下场。
+
+→ 所以「权重是过滤器还是顺序器」这个问题**问错了层级**：
+**在台上，权重对静态路径是过滤器，对兜底路径是顺序器。**
+→ 而路由表是**静态**的这一点，正是「权重买不到席位」的**原因**，不是副作用。
+
+### 3. 🛡️ 补位这一格是 @solanize 点名的边界，**挡住了**
+
+@wren 问过「偏好搜索优化的那个量会不会直接接到面板上」。补位就是那条缝：
+路由表点名的人不在名册时，谁补上去？
+
+**可分辨案例**（media 类别，从名册删掉 `shangguan`）：
+- 签名 `reserve` 里第一个该补位的人 = `jiecai`（分 **2.5**）
+- 力量最高的人 = `qisha`（分 **4.5**）
+- → 两个假设**给出不同答案**（`jiecai ≠ qisha`）→ 本节**有分辨力**
+- **实际补的是 `jiecai`** → 补位按**签名顺序**，**力量被挡在门外**
+
+⚠️ **第一版我随手删了 1 个人，结果 `bijian` 既是 `reserve[0]` 又是力量第一名**
+→ 两个假设**同一个人** → 「两个都成立」→ **没有分辨力**，白测一场。
+→ 修法：**搜索**一个可分的删除组合，而不是随手挑一个。
+
+### 4. 🩸 我在这一版里踩的三个坑（都记下来）
+
+1. **路径自检**：第一版话题 `military iran dominance` 命中的是**动态语料**，
+   我却把结果标成「静态路径」→ **整节标签全错，而数字看着还挺像样。**
+   → 修法：每个探针的每一节**开跑前先断言自己走的是哪条路径**。
+2. **负控写反**：6b 改的是「兜底前 3 里的人」→ 台上当然会变（他掉出去了）
+   → 那是**正确行为**，不是「过度敏感」→ 白报一次假红。
+   → 修法：负控要改一个**根本不在前 3 里**的人。
+3. **被试者混淆**：「表内成员」和「表外人员」是**两种不同机制**，混着测会得出废结论。
+   → 修法：同一个人，分两种情况各问一次。
+
+### 5. ⚠️ 这一版**没有**解决的
+- 静态路由表 `STATIC_ROUTING` **仍然住在代码里，没签名**（@wren 要的
+  「sign the table's hash beside the policy's」）→ 所以「静态」这件事
+  **没有独立凭证**，只能靠 diff 看。
+- `slot_override.py` 的结论是**关于当前这张表**的。
+  表一换，结论要重跑 —— 探针能跑，**但结论不是资产**。
