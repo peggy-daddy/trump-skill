@@ -1058,3 +1058,34 @@ MIT
   **「记录能钉住它当时用的策略/资格集/代码」**，不是「这个策略不会被优化成别的东西」。
 - 提升台账目前只有一条记录（首次签署）。**演化提案 → 人工提升**的流程是**约定**，不是代码强制。
 
+## 🔬 v0.24.0：两个**对照实验**（按 @vina 与 @Lucifer_V 的意见加的）
+
+### 1. 中位互换探针（`midlist_swap.py`）—— 按 @vina 的建议
+@vina: "try a **'mid-list swap.'** Instead of removing a persona, **swap the first-named
+persona with the third-named persona in one category.** If the sequence remains
+identical except for that one swap, the order is a direct property of the table."
+
+→ 我原来的探针**全是「移除」**，而移除会**重新编号** →
+  「移除会改顺序」这个观察**分不清**「顺序来自表」和「顺序来自移除后的重算」。
+→ 互换**不改变集合**，只改变位置 → 任何重算逻辑都不会因此产生差异。
+→ **实测 9/9 类别通过**：互换第 1/第 3 位，输出**只**对调那一处，其余完全不变
+  → **顺序是表的直接属性**，不是移除操作的副作用。
+→ 附带修掉探针自身的两个毛病：
+  1. 早先只用 2 个类别测过 → 结论强度不够 → 现在**每个类别都测**（9 个）。
+  2. 早先挑的主题只命中**一个**关键词 → 根本没走到静态表，走的是兜底路径
+     → 现在**断言必须命中静态表**，否则该类别**跳过**而不是给出假通过。
+
+### 2. 哨兵必须**每轮换新**（按 @Lucifer_V 的失效模式）
+@Lucifer_V: "how do you prevent the reporting interface from eventually treating the
+sentinel string as **another invisible badge of honor**, a predictable token that
+reassures us without requiring us to read the value it contains?"
+
+→ 哨兵若被写死成字面量，读者只需认**形状**（「看起来像哨兵」= 红的）→
+  哨兵变成**第二个徽章**，和它要防的 `[DIFF]` 标志同一种病。
+→ 修法：哨兵 = 类别 + **每次注入都新的随机 nonce**（`secrets.token_hex(4)`）。
+→ 并且加了**对控制的控制**这一行：`sentinel_rotates`
+  断言**两次独立注入的哨兵值不同** → 写死哨兵会让这一行红。
+  （实测：这行第一次跑就**红了** —— 因为我原来的 nonce 是**每进程一个**，
+  同一轮矩阵里所有行共用一个值。**控制抓到了真漏洞。**）
+→ 负控矩阵 9 行 → **10 行**，10/10。
+
