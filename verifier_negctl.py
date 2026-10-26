@@ -155,11 +155,33 @@ def mut_roster_drop(rows, sent=None):
     ro = list(out[0].get("roster_order") or [])
     dropped = None
     if ro:
-        # ⚠️ **被删掉的人由 nonce 决定** → 每轮不同 →
-        #   报告里出现的名字也必须每轮不同 →
+        # ⚠️ **只能删「本来就不在局里的人」**（v0.28.0 修一个**抖动**）：
+        #   第一版按 nonce 随便挑一个人删 → 偶尔删到**当选者** →
+        #   路由跟着变 → bit0 也亮 → exit=3 而不是 2 → 这一行**时绿时红**。
+        #   → 候选 = 名册 − chosen − candidates（记录自己说了谁在局里）
+        #     删这些人**不可能**改变路由 → 这一行只测 bit1。
+        #   → 空集时退回「分数最低的一半」，仍然不碰当选者。
+        _inplay = set(out[0].get("chosen") or []) | set(out[0].get("candidates") or [])
+        _eligible = [k for k in ro if k not in _inplay]
+        if not _eligible:
+            gods = json.load(open(os.path.join(ROOT, "data", "trump-profile.json"),
+                                  encoding="utf-8"))["tenGods"]
+            _srt = sorted(ro, key=lambda k: gods.get(k, {}).get("score", 0))
+            _eligible = _srt[len(_srt) // 2:]
+        # ⚠️ **被删掉的人每轮不同** → 报告里出现的名字也必须每轮不同 →
         #   证明核验器读的是**那一格**，而不是打印一个固定字面量。
-        _idx = int(hashlib.sha256((sent or "x").encode()).hexdigest(), 16) % len(ro)
-        dropped = ro[_idx]
+        #   ⚠️ v0.28.0 修一个**抖动**：第一版用 nonce 的哈希取模 →
+        #     候选只有 3~5 个 → **两轮撞同一个人**的概率约 1/4 →
+        #     矩阵变成**时绿时红**。
+        #   → 修法：轮次编号直接决定取哪一个（第 0 轮取第 0 个，第 1 轮取第 1 个），
+        #     nonce 仍然每轮重生成（哨兵不是固定字面量这一条不受影响）。
+        _tok = (sent or "").rsplit("#", 1)
+        if len(_tok) == 2 and _tok[1].isdigit():
+            _idx = int(_tok[1])
+        else:
+            _idx = int(hashlib.sha256((sent or "x").encode()).hexdigest(), 16)
+        _idx = _idx % len(_eligible)
+        dropped = _eligible[_idx]
         out[0]["roster_order"] = [k for k in ro if k != dropped]
     return _reseal(out), (dropped or "")
 
@@ -473,7 +495,7 @@ def run_matrix():
                 #   证明核验器读的是**那一格**，不是打印一个固定字面量。
                 vals = []
                 for _i in range(2):
-                    _nonce = sentinel_for(sent_cls)
+                    _nonce = "%s#%d" % (sentinel_for(sent_cls), _i)
                     _t, _lit = mut(base, _nonce)
                     _p = os.path.join(tmp, "%s_%d.jsonl" % (cls, _i))
                     _write(_t, _p)

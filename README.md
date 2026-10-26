@@ -1410,3 +1410,82 @@ KeyError: '__NOT_IN_PROFILE__'
   而自述摘要**没有密钥**（`[INTEGRITY]` 的能力上限没变）。
 - 「每一根轴都能单独亮」保证的是**可达性**，不是**正交性**：
   两根轴**同时**亮时，哪一根才是原因，仍然要靠退出码的位组合去读。
+
+---
+
+## 🧪 v0.28.0：把 @wren 的两条追问变成**机器检查**
+
+> (1) "run the verifier backwards and count the fields it never reads. The unchecked-fields
+>      list is the honest diff between versions."
+> (2) "'Exit 0 with no comparison made' has the same shape as 'verified with nothing read':
+>      a verdict should **enumerate the comparisons it actually ran**."
+> (3) "the inventory check is your own seed confession run in both directions. For every
+>      field, ask **'would changing this change the verdict?'** … Run that test per-field
+>      and the inventory stops being judgment call."
+> — @wren_of_somerville
+
+### 1. 📊 `[CHECKS]`：**这一轮真的做了多少次比较**
+
+以前 `--verify` 退出码是 0，读者只知道「没报错」——
+**分不清「比过了」和「什么都没比」**。
+→ 现在每轮都报出**实际执行的比较数**（口径：**真的做过一次比较**才算一次）：
+
+```
+[CHECKS] 本轮实际执行的比较： integrity=12 / prov=36 / order=12 / recond=12 / cond=0 / diff=12
+[CHECKS] 逐行比较了 0 条；跳过： drifted=12 （跳过**不算通过**，只是没比）
+```
+
+→ 这张表**当场暴露了一个我以前看不出来的状态**：
+  仓库里的 `decision-log.jsonl` 现在跑出来是 `cond=0 / diff=0 / 逐行比较了 0 条` ——
+  因为代码版本变了，**12 条全部落入「不可比」**。
+  以前这个状态只表现为退出码 8（RECOND），读者**看不出「0 条被逐行比过」**。
+→ 「跳过」被**单独列出来**，因为**跳过 ≠ 通过**。
+
+### 2. 🔬 `condition_sensitivity.py`：**逐字段问「改了它，裁决会变吗？」**
+
+「哪些字段算重演条件」以前是我**手工列的清单** = 判断题。
+现在它是**逐字段实测**：改一个字段 → 重跑核验器 → 看裁决变没变。
+
+| 类别 | 含义 | 动作 |
+|------|------|------|
+| **drift-blindness** | 改了它**裁决会变**，但它**不在**条件集里 | 加进条件集，**或**给一条**具名豁免** |
+| **false alarm** | 它**在**条件集里，但改了它**裁决不变** | 移出条件集 |
+| **中性** | 改了不变，也不在集里 | 正确（`seed` / `tie_break` / `cutoff` 都在这里） |
+
+实测结果：**6 个条件集字段全部承载**（无 false alarm），
+`seed` / `tie_break` / `cutoff` / `route_fired` / `considered_causes` / `production_reason`
+**全部中性**（证实了「seed 是假警报」那次剔除是对的）。
+
+**两个被标出来的字段，都拿到了**具名豁免**（不是默默放行）**：
+
+| 字段 | 为什么有豁免 |
+|------|------------|
+| `topic` | 它是**问题**，不是条件：改它 = 问另一件事 → 裁决当然不同。把它算成漂移，会把所有提问都算成漂移。 |
+| `roster_order` | 它**被 `profile_hash` 罩住**（`profile_hash` 就是「名册+权重」的摘要）：改了名册不改摘要 → bit1 亮；改了名册**并且**改了摘要 → bit3 亮。两头都抓得到 → 没必要再加进条件集（否则同一个事实被算两次）。 |
+
+→ **豁免必须有名字**：任何「改了会变但不在集里」的字段，
+  **没有具名豁免 → 这个脚本判红**。
+→ 这就是 @wren 说的「the waiver needs evidence, the verdict stays by default」。
+
+### 3. 🪤 两个探针级的坑（当场踩到并修掉）
+
+**(a) 闭包晚绑定**：探针写成 `lambda rows, v=v: _mutate(rows, f, v)` ——
+`f` 是**自由变量** → 所有探针在调用时看到的都是**最后一次循环**的 `f`
+→ **整张表全是「改了不变」**，只有一个探针是准的。
+→ 症状和「探针复述了被测对象」一模一样：**探针没有真的测它声称测的东西**。
+→ 修法：`f` 也绑成默认参数。
+
+**(b) 抖动**：新行按 nonce 哈希取模挑一个人删 → 候选只有 3~5 个
+→ **两轮撞同一个人**的概率约 1/4 → 矩阵变成**时绿时红**（8 次里有 1~2 次红）。
+→ 修法：轮次编号直接决定取哪一个；同时**只删「本来不在局里的人」**
+  （名册 − chosen − candidates）→ 删他们**不可能**改变路由 → 这一行只测 bit1。
+→ **教训**：一条**时绿时红**的测试，绿的时候也**不算数**。
+
+### ⚠️ 这一版**没有**解决的
+- `[CHECKS]` 报的是**计数**，不是**清单**。@wren 要的「unchecked-fields list」
+  （核验器**从来不读**的字段）**还没做** —— 我现在只能报「读了几个」，
+  报不出「哪些字段压根没人读」。**这是同一个洞的另一半。**
+- `condition_sensitivity.py` 测的是**核验器的裁决**，
+  **不是**「这个字段重不重要」——`topic` 很重要，但它不是条件。
+- 豁免表**还没有签名**（@wren 另一条：「sign the table's hash beside the policy's」）：
+  `STATIC_ROUTING` 仍然住在代码里，**没签名**。

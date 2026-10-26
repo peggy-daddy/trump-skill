@@ -638,6 +638,14 @@ def main():
     if args.verify:
         rows = [json.loads(l) for l in open(args.verify, encoding="utf-8") if l.strip()]
         agree = disagree = cond_bad = recond_bad = unver_bad = 0
+        # ---- [CHECKS] **这一轮真的做了多少次比较**（@wren 的第 2 条）----
+        # → "exit 0 with no comparison made" 与 "verified with nothing read" 形状相同：
+        #   一次**什么都没比**的通过，和一次**比过了**的通过，读者看到的是同一个 0。
+        # → 所以每轮必须**报出实际执行的比较数**，读者才分得清「通过」和「没查」。
+        # → 计数口径：**真的做过一次比较**才算一次（不是「跑到了那个分支」）。
+        _cmp = {"integrity": 0, "prov": 0, "order": 0, "recond": 0, "cond": 0, "diff": 0}
+        _rows_examined = 0
+        _rows_skipped = {"no_policy_digest": 0, "drifted": 0, "unverifiable": 0}
         # ---- 第三种裁决：[RECOND] **重演条件不同** ----
         # @wren: "a re-execution under different conditions isn't a pass — so make it
         #  a schema property: the re-run row carries (conditions_digest,
@@ -680,6 +688,7 @@ def main():
             if "policy_digest" not in row:
                 legacy += 1
                 continue
+            _cmp["prov"] += 3  # 资格集子集 / 资格集 digest / 策略是否已提升
             # (1) 资格集必须是签名资格集的子集
             _used = list(row.get("eligible_set") or [])
             _extra = [k for k in _used if _signed_el and k not in _signed_el]
@@ -720,6 +729,7 @@ def main():
         for row in rows:
             _pd = row.get("policy_digest")
             _ca = row.get("checked_at")
+            _cmp["order"] += 1
             if not _pd or not _ca:
                 continue
             _led_e = _ledger.get(_pd) or {}
@@ -755,6 +765,7 @@ def main():
         integrity_legacy = 0
         for row in rows:
             _h_rec = row.get("hash")
+            _cmp["integrity"] += 1
             if not _h_rec:
                 # 旧记录没有自述摘要 → **不知道**，不是**被改过**。
                 # （同样不能拿「没查过」冒充「查过了没问题」→ 计入 legacy 桶）
@@ -812,6 +823,7 @@ def main():
             # → 这是**假阳性**：字段**不存在** = 「不知道」，
             #   字段**存在但不同** = 「漂移」。两件事不能混。
             # → 修法：缺字段 → 不参与比较（但计入 legacy 桶，读者知道它没被查过）。
+            _cmp["recond"] += 1
             _row_data = {k: v for k, v in _row_data.items() if k in row}
             _diff_fields = [k for k, v in _row_data.items()
                             if _digest({k: v}) != _digest({k: _cur_data.get(k)})]
@@ -852,6 +864,7 @@ def main():
                       "→ 数据条件相同、**代码不同** → 结果不同也说得通")
         for _ri, row in enumerate(rows):
             if "policy_digest" not in row:
+                _rows_skipped["no_policy_digest"] += 1
                 continue
             # ⚠️ **条件已漂移的行，不判 [DIFF]**（v0.24.0 修）
             # → 条件不同的时候，重算结果不同是**预期**的，
@@ -861,6 +874,7 @@ def main():
             #     条件相同 + 结果不同 → [DIFF]（路由真的分歧）
             #     条件相同 + 结果相同 → 一致
             if _ri in _drifted_disk:
+                _rows_skipped["drifted"] += 1
                 continue
             # ---- [UNVERIFIABLE] 这条记录**核不了**（不是"核过了没问题"）----
             # ⚠️ v0.27.0 实测抓到的真缺陷：
@@ -913,6 +927,7 @@ def main():
                                                         ensure_ascii=False),
                           "reconstruction_used_roster:",
                           json.dumps(list(p["tenGods"].keys()), ensure_ascii=False))
+                _cmp["diff"] += 1
                 mine = decide(row["topic"], p, topic_memory)
                 if mine["chosen"] == row["chosen"] and mine["source"] == row["source"]:
                     agree += 1
@@ -932,6 +947,7 @@ def main():
                               "recorded:", row["source"], "recomputed:", mine["source"])
             except (KeyError, TypeError, ValueError) as e:
                 unver_bad += 1
+                _rows_skipped["unverifiable"] += 1
                 _ghost = [k for k in (row.get("roster_order") or [])
                           if k not in gods]
                 print("[UNVERIFIABLE]", row.get("topic"),
@@ -942,6 +958,13 @@ def main():
                       "**核不了**（不是「核过了没问题」）")
 
         print(f"[VERIFY] 一致 {agree} / 不一致 {disagree} / 不可比 {len(_drifted_disk)} / 共 {len(rows)}")
+        # ---- [CHECKS] 本轮**实际执行的比较数**（不是「跑到了哪个分支」）----
+        # → 读者要能分清「通过」与「**什么都没比**的通过」。
+        print("[CHECKS] 本轮实际执行的比较：",
+              " / ".join(f"{k}={v}" for k, v in _cmp.items()))
+        print("[CHECKS] 逐行比较了", _rows_examined, "条；跳过：",
+              " / ".join(f"{k}={v}" for k, v in _rows_skipped.items() if v),
+              "（跳过**不算通过**，只是没比）")
         if cond_bad:
             print(f"[COND] 条件不一致 {cond_bad} 条 —— 这些**不是**路由分歧，"
                   f"是核对方用错了条件。")
