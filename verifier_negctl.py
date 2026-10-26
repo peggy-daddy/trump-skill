@@ -43,6 +43,7 @@ EXIT_OK = 0        # 完全一致
 EXIT_DIFF = 1      # 路由分歧（重算选的人不一样）
 EXIT_COND = 2      # 条件被改（记录自述的 hash / 权重对不上）
 EXIT_BOTH = 3      # 两者都有
+EXIT_PROV = 4      # provenance 断（策略/资格集/代码 版本对不上，或策略未提升）
 
 
 def _run(args, cwd=ROOT):
@@ -111,6 +112,28 @@ def mut_both(rows):
     return out, "同时改写 chosen 与 weights"
 
 
+def mut_eligible(rows):
+    """改写**资格集 digest** —— 模拟「变体跑在了不是它声明的那份资格集上」。"""
+    out = [dict(r) for r in rows]
+    out[0]["eligible_digest"] = "__SENTINEL_tamper_eligible__"
+    return out, "改写资格集 digest"
+
+
+def mut_eligible_set(rows):
+    """把一个**不在签名资格集里的人**放进记录用的资格集 ——
+    这就是 @solanize 说的「变体引入了已签署名册快照之外的人 → 这一轮无效」。"""
+    out = [dict(r) for r in rows]
+    out[0]["eligible_set"] = list(out[0].get("eligible_set") or []) + ["__SENTINEL_tamper_outsider__"]
+    return out, "引入签名资格集之外的人"
+
+
+def mut_policy(rows):
+    """改写**策略 digest** —— 模拟「用一份没有提升记录的政策产出了记录」。"""
+    out = [dict(r) for r in rows]
+    out[0]["policy_digest"] = "__SENTINEL_tamper_policy__"
+    return out, "改写策略 digest（该策略无提升记录）"
+
+
 # (break class, 描述, 期望退出码, 期望 marker, 变异函数)
 # @solanize: "the broken-table control needs a **pinned injection point**:
 # break the route at a specific edge with a sentinel, and assert that the probe
@@ -134,6 +157,13 @@ ROWS = [
      "__SENTINEL_tamper_weights__"),
     ("tamper_both", "同时改路由与条件", EXIT_BOTH, "[DIFF]", mut_both,
      "__SENTINEL_tamper_both__"),
+    # ── provenance 轴（第 57 轮新增；按 @solanize 的两条可测条件）──
+    ("tamper_eligible", "改写资格集 digest", EXIT_PROV, "[PROV]", mut_eligible,
+     "__SENTINEL_tamper_eligible__"),
+    ("tamper_outsider", "引入签名资格集之外的人", EXIT_PROV, "[PROV]", mut_eligible_set,
+     "__SENTINEL_tamper_outsider__"),
+    ("tamper_policy", "改写策略 digest（无提升记录）", EXIT_PROV, "[PROV]", mut_policy,
+     "__SENTINEL_tamper_policy__"),
 ]
 
 
@@ -151,8 +181,12 @@ def _classify(rc, out, expect, marker, sentinel=None):
                ("FAIL", "退出码对，但缺少证据标记 %s" % marker)
     if rc == 0:
         return "FAIL", "退出码是 0 —— **篡改被放行了**"
-    if rc not in (EXIT_DIFF, EXIT_COND, EXIT_BOTH):
-        return "INCONCLUSIVE", "退出码 %s 不在契约里（0/1/2/3）—— 无法判断" % rc
+    # 退出码是**位标志**：bit0=路由分歧 / bit1=条件被改 / bit2=provenance 断
+    #   → 合法取值 0~7。老契约 0~3 一个数都没改，只是多了一根轴。
+    if rc not in (EXIT_DIFF, EXIT_COND, EXIT_BOTH, EXIT_PROV,
+                  EXIT_DIFF | EXIT_PROV, EXIT_COND | EXIT_PROV,
+                  EXIT_BOTH | EXIT_PROV):
+        return "INCONCLUSIVE", "退出码 %s 不在契约里（0~7 位标志）—— 无法判断" % rc
     if rc != expect:
         return "FAIL", "退出码 %s，期望 %s —— 它因为**别的原因**红了" % (rc, expect)
     if marker not in out:

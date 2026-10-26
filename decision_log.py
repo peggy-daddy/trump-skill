@@ -158,6 +158,82 @@ def _map_table_to_keys(table, profile):
     return out
 
 
+
+# ── 签名策略输入与 provenance（第 57 轮，按 @solanize 的两条可测条件实现）──
+# @solanize:
+#   (1) 演化出来的偏好必须是**冻结资格集上的全序**。
+#       变体若引入了不在**已签署名册快照**里的人 → 这一轮**判为无效**，
+#       指标被丢弃，而不是被计分。
+#   (2) 演化出来的偏好必须**可复现**：同样的策略输入 + 同样的种子 + 同样的代码版本
+#       → 同样的顺序。否则「演化产物」不是产物，是**轨迹**，
+#       你没法把它和手写版本 diff，也没法解释它为什么动。
+#   → 每条记录带 (policy_digest, eligible_digest, code_sha, seed)，
+#     授权人就是**已签署的名册 digest**；eligible-set digest 与它不一致的变体，
+#     就是那个「自我改写权限来源」的尝试。
+POLICY_FILE = os.path.join(ROOT, "data", "policy.json")
+LEDGER_FILE = os.path.join(ROOT, "policy-ledger.jsonl")
+
+
+def _canon(obj):
+    return json.dumps(obj, ensure_ascii=False, sort_keys=True)
+
+
+def _digest(obj, n=16):
+    return hashlib.sha256(_canon(obj).encode()).hexdigest()[:n]
+
+
+def load_policy():
+    """当前签名策略输入。"""
+    try:
+        with open(POLICY_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def policy_digest(policy=None):
+    p = load_policy() if policy is None else policy
+    return _digest(p) if p else None
+
+
+def eligible_digest(policy=None):
+    p = load_policy() if policy is None else policy
+    el = p.get("eligible_roster") or []
+    return _digest(el) if el else None
+
+
+def code_sha():
+    """代码版本：记录要能钉住「当时跑的是哪份代码」。"""
+    try:
+        import subprocess
+        out = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
+                             capture_output=True, text=True, timeout=10)
+        if out.returncode == 0:
+            return out.stdout.strip()[:12]
+    except Exception:
+        pass
+    return "unknown"
+
+
+def load_ledger():
+    """提升台账（append-only）：policy_digest -> 条目。"""
+    out = {}
+    if not os.path.exists(LEDGER_FILE):
+        return out
+    with open(LEDGER_FILE, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                e = json.loads(line)
+            except Exception:
+                continue
+            if e.get("policy_digest"):
+                out[e["policy_digest"]] = e
+    return out
+
+
 def decide(topic, profile, topic_memory):
     """独立于 demo.choose 的选择器重算，用于 --verify。
 
@@ -208,8 +284,22 @@ def decide(topic, profile, topic_memory):
     stat_hits.sort(key=lambda x: -x[0])
     if stat_hits and stat_hits[0][0] >= 2:
         n, cat, cfg = stat_hits[0]
+        # ⚠️ **独立实现也必须实现同一条声明出来的政策。**
+        #   之前：生产路径（demo.choose）会**按名册补位**，而这里（decide）**不补**。
+        #   → 两条路径在「表格点名不足 3 人」时**必然分歧**，
+        #     而记录写的是生产路径的结果 → 核验器会报分歧，但那是**实现差**不是路由分歧。
+        #   → 修法：两边都从**签名 reserve**（签名顺序）补位。
+        _roster = profile.get("tenGods", {})
+        _picked = [g for g in (cfg["gods"] or []) if g in _roster]
+        if len(_picked) < 3 and _roster:
+            _called = set(_picked)
+            _res = load_policy().get("reserve") or []
+            for k in [k for k in _res if k in _roster and k not in _called]:
+                if len(_picked) >= 3:
+                    break
+                _picked.append(k)
         return rec("static", "静态路由表命中（从 skills/ask/SKILL.md 解析）",
-                   f"命中 {n} 个关键词", cfg["gods"])
+                   f"命中 {n} 个关键词", _picked)
 
     # 兜底：按 score 降序取前三。**并列时记录并列集合**。
     # 决胜规则：**显式值** roster_rank。@morrowfield 的变形断言：
@@ -298,7 +388,8 @@ def roster_diff(profile, prev_state):
             "weights_delta": weights_changed}
 
 
-def build_record(topic, profile, topic_memory, roster_order=None, roster_delta=None):
+def build_record(topic, profile, topic_memory, roster_order=None, roster_delta=None,
+                 seed=None):
     """写一条决策记录。
 
     记录的 `chosen` 来自**生产路径**（demo.choose）——
@@ -375,6 +466,16 @@ def build_record(topic, profile, topic_memory, roster_order=None, roster_delta=N
     rec["profile_hash"] = hashlib.sha256(
         json.dumps(profile["tenGods"], ensure_ascii=False, sort_keys=True).encode()
     ).hexdigest()[:12]
+    # ---- provenance：这份记录是在**哪份签名策略**、**哪份代码**、**哪个种子**下产生的 ----
+    # @solanize: "a per-variant record of (policy input digest, eligible set digest,
+    # resulting order). It costs almost nothing, it makes the preference/policy split
+    # auditable after the fact instead of asserted."
+    _pol = load_policy()
+    rec["policy_digest"] = policy_digest(_pol)
+    rec["eligible_digest"] = eligible_digest(_pol)
+    rec["eligible_set"] = list(profile["tenGods"].keys())
+    rec["code_sha"] = code_sha()
+    rec["seed"] = seed
     body = json.dumps({k: v for k, v in rec.items() if k != "hash"}, ensure_ascii=False, sort_keys=True)
     rec["hash"] = hashlib.sha256(body.encode()).hexdigest()[:12]
     return rec
@@ -411,7 +512,51 @@ def main():
     if args.verify:
         rows = [json.loads(l) for l in open(args.verify, encoding="utf-8") if l.strip()]
         agree = disagree = cond_bad = 0
+        # ---- provenance 轴（第三根轴，退出码 bit2 = 4）----
+        # @solanize 的两条可测条件，在这里变成**闸门**而不是原则：
+        #   (1) 变体不得引入签名资格集之外的人 → 否则这一轮**无效**，不是能力
+        #   (2) 记录必须能钉住 (策略输入, 资格集, 代码版本, 种子) → 否则无法复现
+        # 「授权人」= **已签署的名册 digest**：eligible-set digest 对不上的变体，
+        # 就是那个「自我改写权限来源」的尝试。
+        prov_bad = legacy = 0
+        _pol_now = load_policy()
+        _signed_pol_d = policy_digest(_pol_now)
+        _signed_el_d = eligible_digest(_pol_now)
+        _signed_el = list(_pol_now.get("eligible_roster") or [])
+        _ledger = load_ledger()
         for row in rows:
+            if "policy_digest" not in row:
+                legacy += 1
+                continue
+            # (1) 资格集必须是签名资格集的子集
+            _used = list(row.get("eligible_set") or [])
+            _extra = [k for k in _used if _signed_el and k not in _signed_el]
+            if _extra:
+                prov_bad += 1
+                print("[PROV]", row.get("topic"), "field=eligible_set",
+                      "not_in_signed:", _extra,
+                      "signed:", _signed_el)
+            # 资格集 digest 必须与该记录声明的策略一致
+            if row.get("eligible_digest") != _signed_el_d:
+                _led = _ledger.get(row.get("policy_digest") or "")
+                _led_el_d = eligible_digest(_led.get("policy")) if _led and _led.get("policy") else None
+                prov_bad += 1
+                print("[PROV]", row.get("topic"), "field=eligible_digest",
+                      "recorded:", row.get("eligible_digest"),
+                      "signed:", _signed_el_d,
+                      "ledger_for_this_policy:", _led_el_d)
+            # 该策略必须**已被提升**（有署名的提升记录），否则是未经授权的政策
+            if row.get("policy_digest") != _signed_pol_d \
+                    and row.get("policy_digest") not in _ledger:
+                prov_bad += 1
+                print("[PROV]", row.get("topic"), "field=policy_digest",
+                      "recorded:", row.get("policy_digest"),
+                      "signed:", _signed_pol_d,
+                      "note:", "该策略**没有提升记录** → 未经授权的政策，"
+                               "这一轮应判为无效变体，而不是新能力")
+        for row in rows:
+            if "policy_digest" not in row:
+                continue
             p = json.loads(json.dumps(profile))
             p["tenGods"] = {k: dict(gods[k]) for k in row.get("roster_order", base_order)}
             # **从记录里重建权重** —— 记录里有 weights，那是当时真正用的力量值。
@@ -473,14 +618,17 @@ def main():
         #     记录里的条件和它自己声明的 hash 对不上，**本身就是被改过**。
         # @kobolsix: "adversarial record mutations" —— 篡改必须能被**拒绝**，
         #   而且要**按它为什么被拒绝**分类，不要只给一个笼统的非零。
-        # 退出码：0=完全一致 / 1=路由分歧 / 2=条件被改 / 3=两者都有
-        if disagree and cond_bad:
-            return 3
-        if disagree:
-            return 1
-        if cond_bad:
-            return 2
-        return 0
+        if legacy:
+            print(f"[PROV] 旧记录 {legacy} 条（没有 provenance 字段）—— "
+                  f"**不判失败**，但它们无法被独立复现，报数时必须单独标注。")
+        if prov_bad:
+            print(f"[PROV] provenance 不一致 {prov_bad} 条 —— 这些不是路由分歧，"
+                  f"是「这份记录不是在该声明的策略/资格集/代码下产生的」。")
+        # 退出码（位标志）：bit0=路由分歧 / bit1=条件被改 / bit2=provenance 断
+        #   0=完全一致 / 1=路由分歧 / 2=条件被改 / 3=两者都有
+        #   4=provenance 断 / 5=路由+provenance / 6=条件+provenance / 7=三者都有
+        # → 老契约 0~3 **一个数都没改**，只是多了一根轴。
+        return (1 if disagree else 0) | (2 if cond_bad else 0) | (4 if prov_bad else 0)
 
     # 名册快照：用来发现「谁走了」这类**结构变化**
     rs_path = os.path.join(ROOT, "decision-log.roster.json")
@@ -516,7 +664,8 @@ def main():
 
     records = []
     for t in TOPICS:
-        records.append(build_record(t, profile, topic_memory, roster_delta=delta))
+        records.append(build_record(t, profile, topic_memory, roster_delta=delta,
+                                        seed=getattr(args, 'seed', None)))
     if args.permutations:
         rng = random.Random(args.seed)
         for _ in range(args.permutations):

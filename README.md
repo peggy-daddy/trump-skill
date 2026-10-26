@@ -1002,3 +1002,59 @@ cd trump-skill && claude plugin link .
 
 ## License
 MIT
+
+## 🔏 v0.23.0：签名策略输入 + provenance 轴（按 @solanize 的 critique 改的）
+
+> @solanize 对我那篇 DGM-H 帖子的 critique：
+> *"the roster backfills by strength, and **strength is exactly what the routing table
+> (or the search over it) would be optimising**. So an evolved routing table does not
+> need write access to the roster — it changes the ranking the roster backfill consumes,
+> and **the roster launders the change into an eligibility decision**. The preference
+> layer is where permission is minted, because permission here is defined as who gets
+> called, and calling is eligibility."*
+
+**他是对的，我帖子里那道切线画错了地方。** 我说「演化偏好，不演化许可来源」，
+但**在这个 repo 里，偏好和许可是同一份东西**：路由表决定谁上场，名册只是池子。
+「找另一个文件来承担许可」是**不可能**的 —— 正确的做法是让策略输入**被签名**，
+并且让「演化」只能是**提案**。
+
+### 1. 补位判据从「名册按力量排序」改成「签名 reserve 顺序」
+原来的补位把**整个名册按力量排序**取前几个。而力量**正是**偏好搜索会优化的那个量
+→ 名册把搜索的改动**洗成**了资格决定，边界就是漏的。
+→ 现在补位只从 `data/policy.json` 的 `reserve`（**签名顺序**）里取。
+`reserve` 是**签过的输入**：搜索动不了它，动它就要新 digest + 提升记录。
+
+**这不是换个说法**：`reserve` 顺序（bijian / jiecai / shishen / shangguan…）
+与力量顺序（qisha 4.5 / pianyin 4.0 / zhengyin 3.0 / jiecai 2.5…）**只有 jiecai 一个交集**。
+
+### 2. 两条可测条件 → 变成闸门
+@solanize 给了两条：
+1. **演化偏好必须是冻结资格集上的全序**；变体若引入签名名册快照之外的人 → **这一轮无效，指标丢弃**，不是计分。
+2. **必须可复现**：同样的策略输入 + 种子 + 代码版本 → 同样的顺序。否则「演化产物」不是产物，是**轨迹**。
+
+实现（`data/policy.json` = 签名策略输入；`policy-ledger.jsonl` = append-only 提升台账）：
+每条决策记录新增 `policy_digest` / `eligible_digest` / `eligible_set` / `code_sha` / `seed`。
+核验器新增**第三根轴** `[PROV]`：
+- 记录用的资格集里有人**不在签名资格集** → 变体无效
+- 记录声明的资格集 digest 与签名策略对不上 → provenance 断
+- 记录声明的策略 digest **没有提升记录** → **未经授权的政策**（不是新能力）
+
+### 3. 退出码改成**位标志**（老契约一个数都没改）
+`bit0=路由分歧 / bit1=条件被改 / bit2=provenance 断` → 合法值 0~7。
+**0=完全一致 / 1=路由分歧 / 2=条件被改 / 3=两者都有** 全部保持原样，只多了一根轴。
+
+### 4. 顺带修掉一个**潜伏的实现差**
+生产路径（`demo.choose`）**会**补位，独立重算路径（`decide`）**不补**
+→ 只要路由表点名不足 3 人，两条路径**必然分歧**，
+而记录写的是生产路径的结果 → 核验器会把**实现差**报成**路由分歧**。
+→ 现在两边都从同一份签名 `reserve` 补位。
+
+### 5. 负控矩阵 6 行 → **9 行**（新增三类 provenance 篡改，每行都带哨兵断言）
+`tamper_eligible` / `tamper_outsider` / `tamper_policy` → 期望 exit=4，且**哨兵必须被观测到**。
+矩阵现状：**9/9**。
+
+### ⚠️ 这一版**没有**解决的
+- 「搜索会优化哪个量」仍然由**人**决定，不是由代码保证的。provenance 轴保证的是
+  **「记录能钉住它当时用的策略/资格集/代码」**，不是「这个策略不会被优化成别的东西」。
+- 提升台账目前只有一条记录（首次签署）。**演化提案 → 人工提升**的流程是**约定**，不是代码强制。
+

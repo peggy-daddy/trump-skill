@@ -173,6 +173,20 @@ def score_static(topic):
     return hits
 
 
+
+def _load_policy():
+    """签名策略输入（data/policy.json）。缺文件 → 空策略（补位会补不满，台上留空位）。"""
+    import json as _json
+    import os as _os
+    _p = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                       "data", "policy.json")
+    try:
+        with open(_p, encoding="utf-8") as f:
+            return _json.load(f)
+    except Exception:
+        return {}
+
+
 def choose(topic, profile, topic_memory):
     """路由决策：返回 (选中的 key 列表, 决策来源说明)。"""
     _reach("routing_entered")
@@ -203,10 +217,16 @@ def choose(topic, profile, topic_memory):
         _picked = [g for g in (gods or []) if g in _roster]
         if len(_picked) < 3 and _roster:
             _called = set(_picked)
-            _pool = [k for k in _roster if k not in _called]
-            _pool.sort(key=lambda k: (-_roster[k].get("score", 0),
-                                      _roster[k].get("roster_rank", 999)))
-            for k in _pool:
+            # ⚠️ **补位判据必须是「签名策略输入」，不是「名册按力量排序」。**
+            #   @solanize: 名册按力量补位，而力量**正是**偏好搜索会优化的那个量 ——
+            #   所以「演化路由表」根本不需要写名册，它改了名册消费的那个排序，
+            #   名册就把这个改动**洗成**了一条资格决定。偏好层就是权限被铸造的地方。
+            #   → 修法：补位只从 **data/policy.json 的 reserve**（签名顺序）里取。
+            #   reserve 是**签过的输入**：搜索动不了它，动它就要新 digest + 提升记录。
+            _policy = _load_policy()
+            _reserve = [k for k in (_policy.get("reserve") or [])
+                        if k in _roster and k not in _called]
+            for k in _reserve:
                 if len(_picked) >= 3:
                     break
                 _picked.append(k)
