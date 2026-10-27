@@ -105,7 +105,7 @@ def stale_sentinel_for(cls):
 # 退出码契约（必须与 decision_log.py --verify 一致）
 EXIT_OK = 0        # 完全一致
 EXIT_DIFF = 1      # 路由分歧（重算选的人不一样）
-EXIT_COND = 2      # 条件被改（记录自述的 hash / 权重对不上）
+EXIT_COND = 2      # 条件被改（记录自述的 hash / 权重 / 交叉字段对不上）
 EXIT_BOTH = 3      # 两者都有
 EXIT_PROV = 4      # provenance 断（策略/资格集/代码 版本对不上，或策略未提升）
 EXIT_RECOND = 8    # 重演条件不同（第三种裁决：不是路由分歧）
@@ -327,7 +327,13 @@ def mut_hash(rows, sent=None):
 ROWS = [
     # (break class, 描述, 期望退出码, 期望 marker, 变异函数, 哨兵类别, kind)
     ("baseline", "没篡改", EXIT_OK, "[VERIFY]", None, None, "normal"),
-    ("tamper_chosen", "改写选中集合", EXIT_DIFF, "[DIFF]", mut_chosen, "tamper_chosen", "normal"),
+    # ⚠️ v0.31.0：改 `chosen` 现在会亮**两根轴**。
+    #   bit0（路由分歧）：重算选的人不一样 —— 这是老的那句。
+    #   bit1（记录被改过）：cause 轴发现记录**自己两个字段对不上**
+    #     （chosen_index 是按原来的 chosen 算的，改了 chosen 就对不上了）
+    #     → 这是**新的一句**，而且是真话：**两句话都是真的**。
+    #   → 期望值因此从 1 变成 3。
+    ("tamper_chosen", "改写选中集合", EXIT_DIFF | EXIT_COND, "[DIFF]", mut_chosen, "tamper_chosen", "normal"),
     ("tamper_source", "改写来源标签", EXIT_DIFF, "[DIFF]", mut_source, "tamper_source", "normal"),
     # 改写名册 hash / 权重 = **条件真的变了** → 条件轴(bit1) + 重演条件轴(bit3) 一起响。
     # 这不是重复计数：bit1 说「记录自述的条件与它自己的名册对不上」，

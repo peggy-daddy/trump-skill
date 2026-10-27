@@ -234,16 +234,27 @@ def eligible_digest(policy=None):
 
 
 def code_sha():
-    """代码版本：记录要能钉住「当时跑的是哪份代码」。"""
-    try:
-        import subprocess
-        out = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
-                             capture_output=True, text=True, timeout=10)
-        if out.returncode == 0:
-            return out.stdout.strip()[:12]
-    except Exception:
-        pass
-    return "unknown"
+    """代码版本：**内容摘要**，不是提交号。
+
+    → 以前它返回 `git rev-parse HEAD` → 钉的是**提交**。
+      但工作区里**未提交的改动**它一点都看不见：
+      记录会声称「我是那个提交产出的」，而实际跑的是另一份代码。
+      → 这是一条**静默的假声明**。
+    → @wren: 「the digest is only re-executable if it digests the *canonical*
+      input」—— 钉住的东西必须是**真跑过的那一份**。
+    → 现在它哈希**两份源码的内容**（decision_log.py + demo.py）。
+      写记录的路径和核验的路径都调它 → **内容一致**才谈得上重演；
+      内容差一个字 → 漂移 → cond/diff 两轴自动赊销，不会出假指控。
+    """
+    h = hashlib.sha256()
+    for rel in ("decision_log.py", "demo.py"):
+        h.update(rel.encode())
+        try:
+            with open(os.path.join(ROOT, rel), "rb") as f:
+                h.update(f.read())
+        except OSError:
+            pass
+    return h.hexdigest()[:12]
 
 
 def load_ledger():
@@ -607,6 +618,55 @@ def record_hash(rec):
     return hashlib.sha256(body.encode()).hexdigest()[:12]
 
 
+def _recompute_reason(row, prof):
+    """**用记录自己的权重，重算它自述的理由**（同源：只证内部一致，不证外部正确）。
+
+    → @wren: 「the answer is right」和「the answer is attributable」是两件事。
+      这一根轴只做后者：**记录说的理由和它自己的条件对不上**。
+    → 所以这根轴的判决是**内部一致**，不是**外部正确** —— 它会被
+      [TAUTOLOGY] 明确标成同源。诚实比好听重要。
+    → 返回 None = 这条记录**没有可重算的理由**（例如来源不认识）。
+    """
+    src = row.get("source")
+    gods = (prof or {}).get("tenGods") or {}
+    if src == "fallback":
+        w = row.get("weights") or {}
+        order = list(row.get("candidates") or [])
+        has_rank = all("roster_rank" in (gods.get(k) or {}) for k in order if k in gods)
+
+        def _second(k):
+            if has_rank:
+                return (gods.get(k) or {}).get("roster_rank", 10 ** 6)
+            return order.index(k) if k in order else 10 ** 6
+
+        scored = sorted([k for k in order if k in w],
+                        key=lambda k: (-w.get(k, 0), _second(k)))
+        if not scored:
+            return None
+        top3 = scored[:3]
+        cut = w.get(top3[-1], 0)
+        tied = [k for k in order if k in w and w.get(k, 0) == cut]
+        sel = [k for k in top3 if k in tied]
+        return {
+            "rule": "按力量(score)降序取前三",
+            "cutoff": f"第 3 名分数 = {cut}",
+            "tie_break": {
+                "boundary_score": cut,
+                "tied_candidates": tied,
+                "selected_from_tie": sel,
+                "resolved_by": ("roster_rank（显式名册位次）" if has_rank else
+                                "roster key order (JSON 文件行序) —— **未声明**，属于隐式治理"),
+            },
+        }
+    if src == "static":
+        return {"rule": "静态路由表命中（从 skills/ask/SKILL.md 解析）",
+                "cutoff": None, "tie_break": None}
+    if src == "dynamic":
+        return {"rule": "动态语料 topic-memory.json 命中",
+                "cutoff": None, "tie_break": None}
+    return None
+
+
 class _TracedRow(dict):
     """**记录核验器到底读了哪些字段**（@wren: 「把核验器倒着跑，数它从不读的字段」）。
 
@@ -614,18 +674,22 @@ class _TracedRow(dict):
     → 跑完之后：「记录里有的字段，核验器一个都没碰过」= **未被核验的字段**。
     → 那张清单是版本之间最诚实的 diff，也是**给一个还不存在的审计者的声明**。
     """
-    __slots__ = ("seen",)
+    __slots__ = ("seen", "seen_get", "seen_item")
 
     def __init__(self, data, seen):
         super().__init__(data)
-        self.seen = seen
+        self.seen = seen          # 全局并集
+        self.seen_get = set()     # **本行**用 .get() 读到的字段
+        self.seen_item = set()    # **本行**用 [] 读到的字段
 
     def get(self, k, default=None):
         self.seen.add(k)
+        self.seen_get.add(k)
         return super().get(k, default)
 
     def __getitem__(self, k):
         self.seen.add(k)
+        self.seen_item.add(k)
         return super().__getitem__(k)
 
     def __contains__(self, k):
@@ -645,7 +709,36 @@ AXIS_FIELDS = {
     "recond": ("policy_digest", "eligible_digest", "corpus_digest", "profile_hash"),
     "cond": ("policy_digest", "profile_hash", "weights", "roster_order"),
     "diff": ("policy_digest", "topic", "chosen", "source"),
+    # ---- v0.31.0：**理由字段从「权利」变成「观测」** ----
+    # @wren: 「一轮如果在理由里引用了 rule / cutoff / tie_break，
+    #   却从没读过那些字段，这一轮就该**判失败**，而不是记一笔。」
+    # → 以前这些字段只是**被写下来**（entitlement），核验器一个都不读。
+    # → 现在拆成两根轴：reason（用**记录自己的权重**重算 → 同源，证内部一致）
+    #   和 cause（用**磁盘上的路由表**重算 → 外部，证得伪）。
+    "reason": ("rule", "cutoff", "tie_break"),
+    "cause": ("considered_causes", "production_reason"),
 }
+
+# ---- **见证字段**：某根轴**跑过**的独立证据（@wren: 「shortfall 指向了错的那一格」）----
+# → 计数器（_axis_done）在**比较点**上加一；见证字段是**追踪器**独立看到的运行痕迹。
+# → 两者不一致 = **报数器本身坏了**（v0.29.0 那 180 次欠账就是这么来的）。
+# → kind 用来区分「同一字段被不同轴读到」：cond 用 [] 读 profile_hash，
+#   recond 用 .get() 读它 → 两根轴的见证互不串味。
+AXIS_WITNESS = {
+    "integrity": ("hash", "get"),
+    "prov": ("eligible_set", "get"),
+    "order": ("checked_at", "get"),
+    "recond": ("corpus_digest", "get"),
+    "cond": ("profile_hash", "item"),
+    "diff": ("chosen", "item"),
+    "reason": ("rule", "get"),
+    "cause": ("considered_causes", "get"),
+}
+
+# ---- **理由字段清单**：记录里引用了、核验器就必须读 ----
+# → 引用了却没读 = 那一格只是**带列名的修辞**（@wren 原话）。
+REASON_FIELDS = ("rule", "cutoff", "tie_break", "production_reason",
+                 "considered_causes")
 # ---- **同源比较检测器**（@wren: 「比较的两个操作数若落在同一个来源上，
 #   那就是自证，不该等到相邻的运气才发现」）----
 # → 每一根轴的两边分别打上**来源标签**。
@@ -659,6 +752,8 @@ AXIS_OPERAND_SOURCES = {
     "recond": ("record.conditions_digest", "disk.current"),
     "cond": ("record.roster_order", "reconstructed(record)"),
     "diff": ("record.chosen", "recomputed.decide"),
+    "reason": ("record.rule/cutoff/tie_break", "reconstructed(record)"),
+    "cause": ("record.considered_causes", "disk.routing_table"),
 }
 PRECOMMIT_PATH = os.environ.get("PROMISE_LEDGER") or os.path.join(
     ROOT, "refs", "precommit.jsonl")
@@ -763,6 +858,20 @@ def main():
         _schema = sorted({k for r in rows for k in r})
         # ---- [CHECKS] **事前承诺 vs 实际执行**（@wren 的第 1、2 条）----
         _promise = load_precommit(args.verify)
+        # ---- [PROMISE] **报告头**：先说这一轮站在哪 ----
+        # @wren: 「Every report header prints its promise row id or the word NONE,
+        #   and a NONE round is third-class: it cannot launder itself into
+        #   verified by printing pretty tables.」
+        # → 承诺行必须在**最前面**，不能在末尾当脚注。
+        # → 没有承诺行 → 这一轮只是**自述**（VERDICT=self-narrated）。
+        if _promise is None:
+            print("[PROMISE] PROMISE=NONE —— **本轮没有事前承诺行**")
+            print("[PROMISE] 这一轮是**自述**：读者只能相信作者自己数的比较数。")
+        else:
+            print(f"[PROMISE] PROMISE={_promise.get('ts')} "
+                  f"expected={_promise.get('expected_comparisons')} "
+                  f"rows={_promise.get('rows')} "
+                  f"digest={_promise.get('record_digest')}")
         _axis_eligible = {ax: sum(1 for r in rows if all(f in r for f in fs))
                           for ax, fs in AXIS_FIELDS.items()}
         _expected_total = sum(_axis_eligible.values())
@@ -773,7 +882,8 @@ def main():
         #   一次**什么都没比**的通过，和一次**比过了**的通过，读者看到的是同一个 0。
         # → 所以每轮必须**报出实际执行的比较数**，读者才分得清「通过」和「没查」。
         # → 计数口径：**真的做过一次比较**才算一次（不是「跑到了那个分支」）。
-        _cmp = {"integrity": 0, "prov": 0, "order": 0, "recond": 0, "cond": 0, "diff": 0}
+        _cmp = {"integrity": 0, "prov": 0, "order": 0, "recond": 0, "cond": 0,
+                "diff": 0, "reason": 0, "cause": 0}
         _rows_examined = 0
         _rows_skipped = {"no_policy_digest": 0, "drifted": 0, "unverifiable": 0}
         # ---- 第三种裁决：[RECOND] **重演条件不同** ----
@@ -815,10 +925,14 @@ def main():
         _signed_el = list(_pol_now.get("eligible_roster") or [])
         _ledger = load_ledger()
         for row in rows:
-            _axis_done["prov"] += 1
+            # ⚠️ v0.31.0：**先判能不能比，再计数**。
+            #   旧写法把计数器放在最前面 → **连比不了的行也报了一次比较**。
+            #   → 「报数器自己说的」与「追踪器看到的」就会对不上
+            #     （unreported / phantom），而那正是**报数器坏了**的信号。
             if "policy_digest" not in row:
                 legacy += 1
                 continue
+            _axis_done["prov"] += 1
             _cmp["prov"] += 3  # 资格集子集 / 资格集 digest / 策略是否已提升
             # (1) 资格集必须是签名资格集的子集
             _used = list(row.get("eligible_set") or [])
@@ -858,8 +972,12 @@ def main():
         #   但**没人把这两者放在同一根时间轴上对账** → 顺序不可见。
         order_bad = 0
         for row in rows:
-            _pd = row.get("policy_digest")
+            # ⚠️ v0.31.0：读字段放在**计数之后** → 见证字段只会在
+            #   「真的比了」的行走一遍 → 计数器与追踪器不会互相拆台。
+            if "checked_at" not in row or "policy_digest" not in row:
+                continue
             _ca = row.get("checked_at")
+            _pd = row.get("policy_digest")
             _cmp["order"] += 1
             _axis_done["order"] += 1
             if not _pd or not _ca:
@@ -896,14 +1014,14 @@ def main():
         integrity_bad = 0
         integrity_legacy = 0
         for row in rows:
-            _h_rec = row.get("hash")
-            _cmp["integrity"] += 1
-            _axis_done["integrity"] += 1
-            if not _h_rec:
+            if "hash" not in row:
                 # 旧记录没有自述摘要 → **不知道**，不是**被改过**。
                 # （同样不能拿「没查过」冒充「查过了没问题」→ 计入 legacy 桶）
                 integrity_legacy += 1
                 continue
+            _h_rec = row.get("hash")
+            _cmp["integrity"] += 1
+            _axis_done["integrity"] += 1
             _body = json.dumps({k: v for k, v in row.items() if k != "hash"},
                                ensure_ascii=False, sort_keys=True)
             _h_now = hashlib.sha256(_body.encode()).hexdigest()[:12]
@@ -935,6 +1053,7 @@ def main():
         # → v0.24.0 修的就是第二类（语料）。
         #   第一类保留 → 负控矩阵的 tamper_both 仍然报 DIFF（11 = 1|2|8）。
         _drifted_disk = set()      # 磁盘侧漂移 → 赊销 DIFF
+        _unver_rows = set()        # **核不了**的行 → 不参与理由判定
         for _i, row in enumerate(rows):
             if "conditions_digest" not in row:
                 continue
@@ -958,7 +1077,13 @@ def main():
             # → 修法：缺字段 → 不参与比较（但计入 legacy 桶，读者知道它没被查过）。
             _cmp["recond"] += 1
             _axis_done["recond"] += 1
-            _row_data = {k: v for k, v in _row_data.items() if k in row}
+            # ⚠️ v0.31.0：**显式地读**这一轴要比的字段。
+            #   以前用 `{k: v for k, v in _row_data.items() if k in row}`，
+            #   那些字段只经过 `__contains__` —— **追踪器看不见它们被读过**，
+            #   于是「这轴到底跑没跑」只能靠计数器自证。
+            #   → 现在每根轴都有**见证字段**（AXIS_WITNESS），
+            #     追踪器能独立看到「这行真的读过它」。
+            _row_data = {k: row.get(k) for k in _row_data if k in row}
             _diff_fields = [k for k, v in _row_data.items()
                             if _digest({k: v}) != _digest({k: _cur_data.get(k)})]
             if _diff_fields:
@@ -1090,6 +1215,7 @@ def main():
                               "recorded:", row["source"], "recomputed:", mine["source"])
             except (KeyError, TypeError, ValueError) as e:
                 unver_bad += 1
+                _unver_rows.add(_ri)
                 _rows_skipped["unverifiable"] += 1
                 _ghost = [k for k in (row.get("roster_order") or [])
                           if k not in gods]
@@ -1100,6 +1226,107 @@ def main():
                       "→ 这条记录引用了**当前名册里不存在的人** → "
                       "**核不了**（不是「核过了没问题」）")
 
+        # ---- [REASON] **记录自述的理由 vs 重算出来的理由**（同源：内部一致）----
+        # @wren: 「一轮如果在理由里引用了 rule / cutoff / tie_break，
+        #   却从没读过那些字段，这一轮就该**判失败**，而不是记一笔。」
+        # → 以前 rule / cutoff / tie_break / production_reason / considered_causes
+        #   全是**只写不读**的字段：记录里有权重，核验器却从不称量。
+        # → 现在每条记录的理由都要**被重算一次**。
+        _reason_bad = _cause_bad = 0
+        _reason_drift = _cause_drift = 0
+        for _ri, row in enumerate(rows):
+            # ⚠️ **核不了的记录不参与理由判定**（v0.31.0 修）。
+            #   → 一条引用了**当前名册里不存在的人**的记录，
+            #     它的「理由」根本无从重算（重建会直接抛异常）。
+            #   → 那种情况下给它扣「理由与重算不一致」是**假指控**：
+            #     它不是「核过了但对不上」，它是**根本没核成**。
+            #   → 正确归属：bit6（核不了）。理由轴不发言。
+            if _ri in _unver_rows:
+                continue
+            _exp = _recompute_reason(row, _cur_prof)
+            if _exp is None:
+                continue
+            _axis_done["reason"] += 1
+            _cmp["reason"] += 1
+            _bad = []
+            _got_rule = row.get("rule")
+            if _got_rule != _exp["rule"]:
+                _bad.append(("rule", _got_rule, _exp["rule"]))
+            if _exp["cutoff"] is not None:
+                _got_cut = row.get("cutoff")
+                if _got_cut != _exp["cutoff"]:
+                    _bad.append(("cutoff", _got_cut, _exp["cutoff"]))
+                _got_tb = row.get("tie_break") or {}
+                for _k in ("boundary_score", "tied_candidates",
+                           "selected_from_tie", "resolved_by"):
+                    if _got_tb.get(_k) != _exp["tie_break"][_k]:
+                        _bad.append(("tie_break." + _k, _got_tb.get(_k),
+                                     _exp["tie_break"][_k]))
+            if _bad:
+                _reason_bad += 1
+                for _f, _g, _e in _bad:
+                    print("[REASON]", row.get("topic"), "field=" + _f,
+                          "recorded:", json.dumps(_g, ensure_ascii=False),
+                          "recomputed:", json.dumps(_e, ensure_ascii=False),
+                          "→ **记录自述的理由与重算不一致** → 归因不成立")
+        # ---- [CAUSE] **记录自述的命中情况 vs 磁盘上的路由表**（外部：真能证伪）----
+        # → 这一根轴的一边来自**磁盘**，所以它能推翻记录，而不只是核对记录。
+        # → 诚实标注：路由表本身与生产路径共用 → 它证的是「记录没算错」，
+        #   不是「表是对的」。
+        for _ri, row in enumerate(rows):
+            # ⚠️ 同上：**核不了的记录不参与原因判定**。
+            #   名册里塞了不存在的人 → 重建直接抛异常 → 这条记录**根本没核成**，
+            #   它的理由也就无从谈起 → 归属是 bit6（核不了），不是 bit1。
+            if _ri in _unver_rows:
+                continue
+            _axis_done["cause"] += 1
+            _cmp["cause"] += 1
+            _topic = (row.get("topic") or "").lower()
+            _recomp = []
+            for _cat, (_g, _lbl) in D.STATIC_ROUTING.items():
+                _n = sum(1 for _kw in D.FALLBACK_KEYWORDS.get(_cat, [])
+                         if _kw in _topic)
+                _recomp.append({"category": _cat, "label": _lbl,
+                                "keyword_hits": _n})
+            _got = row.get("considered_causes")
+            _same = (json.dumps(_got, ensure_ascii=False, sort_keys=True) ==
+                     json.dumps(_recomp, ensure_ascii=False, sort_keys=True))
+            _bad2 = []
+            if not _same:
+                _bad2.append(("considered_causes", _got, _recomp))
+            # ---- 交叉字段：记录里几个字段必须彼此对得上 ----
+            _cands = row.get("candidates")
+            _roster = row.get("roster_order")
+            if _cands is not None and _roster is not None and list(_cands) != list(_roster):
+                _bad2.append(("candidates", _cands, _roster))
+            _ci = row.get("chosen_index")
+            _ch = row.get("chosen")
+            if _ci is not None and _ch is not None and _cands is not None:
+                _exp_ci = [list(_cands).index(k) for k in _ch if k in _cands]
+                if list(_ci) != _exp_ci:
+                    _bad2.append(("chosen_index", _ci, _exp_ci))
+            _pr = row.get("production_reason") or ""
+            _rf = row.get("route_fired")
+            if _rf is not None:
+                _exp_rf = ("静态路由表" in _pr) or ("动态语料" in _pr)
+                if bool(_rf) != bool(_exp_rf):
+                    _bad2.append(("route_fired", _rf, _exp_rf))
+            if not _pr:
+                _bad2.append(("production_reason", _pr, "(非空)"))
+            if _bad2:
+                # → 磁盘侧变了吗？变了就是**漂移**，不归咎于记录。
+                if row.get("code_sha") and _cur_code and row.get("code_sha") != _cur_code:
+                    _cause_drift += 1
+                    print("[CAUSE]", row.get("topic"),
+                          "字段不同:", [b[0] for b in _bad2],
+                          "→ 代码已变（code_sha 不同）→ **漂移**，不判失败")
+                else:
+                    _cause_bad += 1
+                    for _f, _g, _e in _bad2:
+                        print("[CAUSE]", row.get("topic"), "field=" + _f,
+                              "recorded:", json.dumps(_g, ensure_ascii=False)[:400],
+                              "recomputed:", json.dumps(_e, ensure_ascii=False)[:400],
+                              "→ **记录自述的命中情况与磁盘路由表对不上**")
         print(f"[VERIFY] 一致 {agree} / 不一致 {disagree} / 不可比 {len(_drifted_disk)} / 共 {len(rows)}")
         # ---- [CHECKS] 本轮**实际执行的比较数**（不是「跑到了哪个分支」）----
         # → 读者要能分清「通过」与「**什么都没比**的通过」。
@@ -1111,16 +1338,65 @@ def main():
         # ---- [CHECKS] **三个数：expected / compared / refused** ----
         # @wren: 「每一轮都要报三个数：expected、compared、refused。
         #   两个数说不清三个数的故事 —— 欠一个 refusal 和欠一次没做的比较不是一回事。」
+        # ---- [CHECKS] **第三个桶：unreported**（@wren 的第 3 条）----
+        # 「Expected = compared + refused 只有在 **unreported 也是一个行级桶**的时候才闭合。
+        #   一根轴跑了但没报数，既不是 compared 也不是 refused；
+        #   没有第三个桶，shortfall 就指向了**错的那一格**。」
+        # → 两个**互相独立**的观察者：
+        #   计数器 _axis_done（在比较点上加一）
+        #   追踪器（这行**读到了**该轴的见证字段 → 这轴真的跑了）
+        # → 两者不一致 = **报数器自己坏了**（v0.29.0 那 180 次欠账就是这么来的）。
+        _axis_exec = {ax: 0 for ax in AXIS_FIELDS}
+        for _r in rows:
+            for _ax, (_f, _kind) in AXIS_WITNESS.items():
+                _hit = ((_f in _r.seen_item) if _kind == "item"
+                        else (_f in _r.seen_get))
+                if _hit:
+                    _axis_exec[_ax] += 1
+        _unreported = {}
+        _phantom = {}
+        _unexplained = {}
+        for _ax in AXIS_FIELDS:
+            _unreported[_ax] = max(0, _axis_exec[_ax] - _axis_done[_ax])
+            _phantom[_ax] = max(0, _axis_done[_ax] - _axis_exec[_ax])
+            _unexplained[_ax] = (_axis_eligible[_ax] - _axis_done[_ax]
+                                  - _unreported[_ax])
+        _unrep_total = sum(_unreported.values())
+        _phant_total = sum(_phantom.values())
+        _unexpl_total = sum(_unexplained.values())
         _compared_total = sum(_axis_done.values())
         _refused_total = _rows_skipped.get("unverifiable", 0)
         print(f"[CHECKS] 三个数：expected={_expected_total} "
-              f"compared={_compared_total} refused={_refused_total}"
-              f"（shortfall={_expected_total - _compared_total}）")
+              f"compared={_compared_total} refused={_refused_total} "
+              f"unreported={_unrep_total}（shortfall="
+              f"{_expected_total - _compared_total - _unrep_total}）")
         for _ax in sorted(AXIS_FIELDS):
-            _short = _axis_eligible[_ax] - _axis_done[_ax]
-            if _short:
+            _short = _axis_eligible[_ax] - _axis_done[_ax] - _unreported[_ax]
+            if _short or _unreported[_ax] or _phantom[_ax]:
                 print(f"[CHECKS] 轴 {_ax}：可比较 {_axis_eligible[_ax]} 行，"
-                      f"实际比较 {_axis_done[_ax]} 次，**欠 {_short} 次**")
+                      f"实际比较 {_axis_done[_ax]} 次，"
+                      f"**跑了没报数 {_unreported[_ax]} 次**，"
+                      f"**报了没跑 {_phantom[_ax]} 次**，"
+                      f"**欠一个理由 {_short} 次**")
+        # ---- [REASON-GATE] **引用了却从没读过的理由字段** → 这一轮**判失败** ----
+        # @wren: 「一轮如果在理由里引用了 rule / cutoff / tie_break，
+        #   却从没读过那些字段，这一轮就该**判失败**，而不是记一笔。」
+        # → 「记一笔」就是过去的行为：它们只出现在 [UNREAD] 清单里。
+        _reason_unread = [f for f in REASON_FIELDS
+                          if f in _schema and f not in _seen_fields]
+        if _reason_unread:
+            print(f"[REASON-GATE] 记录引用了这些理由字段，核验器却**从未读过**："
+                  f"{_reason_unread} → **这一轮判失败**"
+                  f"（未核验的理由只是**带列名的修辞**）")
+        if _reason_bad:
+            print(f"[REASON] 理由与重算不一致 { _reason_bad } 条 —— "
+                  f"这些记录的**归因不成立**。")
+        if _cause_bad:
+            print(f"[CAUSE] 命中情况与磁盘路由表对不上 { _cause_bad } 条 —— "
+                  f"这些记录的**自述原因**不可信。")
+        if _cause_drift:
+            print(f"[CAUSE] 另有 {_cause_drift} 条属于**漂移**（代码已变）"
+                  f"→ 不判失败。")
         # ---- [PROMISE] **事前承诺 vs 实际执行**（无需攻击者也能看出差别）----
         if _promise is None:
             print("[PROMISE] **没有事前承诺行** —— 这一轮只是**自述**，"
@@ -1182,7 +1458,12 @@ def main():
         #                     bit4=因果顺序倒置（授权晚于裁决）
         #                     bit5=记录自述摘要对不上（记录被改过）
         #                     bit6=记录核不了（引用了不存在的名册成员）
-        #   → 合法取值 0~127。老契约 0~3 一个数都没改，只多了三根轴。
+        #                     bit7=**报告本身不成立**（v0.31.0 新增）
+        #   → 合法取值 0~255（POSIX 退出码 mod 256，所以最高只能到 255）。
+        #   → 老契约 0~3 一个数都没改，只多了四根轴。
+        #   → bit7 与 bit1~bit6 语义不同：bit1~bit6 说的是**记录坏了**，
+        #     bit7 说的是**报告坏了**（报数器自相矛盾、或引用了却没读的理由字段）。
+        #     → 所以 bit7 可以与其它位**同时**出现。
         if order_bad:
             print(f"[ORDER] 因果顺序倒置 {order_bad} 条 —— 裁决**早于**授权，"
                   f"这些记录的授权不成立。")
@@ -1195,10 +1476,26 @@ def main():
         if unver_bad:
             print(f"[UNVERIFIABLE] {unver_bad} 条**核不了** —— "
                   f"这些记录**没有被核验过**，既不算通过也不算失败。")
-        return ((1 if disagree else 0) | (2 if cond_bad else 0)
+        # ---- [VERDICT] **这一轮到底是什么**（读者不用猜退出码的意思）----
+        # @wren: 「a NONE round is third-class: it cannot launder itself into
+        #   verified by printing pretty tables.」
+        # → 退出码回答「有没有东西坏了」；VERDICT 回答「**这一轮算不算核验**」。
+        # → 没有承诺行 = 自述（self-narrated），**不是** verified。
+        # → 报数器自相矛盾 = 报告不成立（unsound）→ 退出码另加 bit128。
+        _unsound = bool(_unrep_total or _phant_total or _reason_unread)
+        if _unsound:
+            _verdict = "unsound"
+        elif _promise is None:
+            _verdict = "self-narrated"
+        else:
+            _verdict = "verified"
+        print(f"[VERDICT] VERDICT={_verdict}")
+        return ((1 if disagree else 0)
+                | (2 if (cond_bad or _reason_bad or _cause_bad) else 0)
                 | (4 if prov_bad else 0) | (8 if recond_bad else 0)
                 | (16 if order_bad else 0) | (32 if integrity_bad else 0)
-                | (64 if unver_bad else 0))
+                | (64 if unver_bad else 0)
+                | (128 if _unsound else 0))
 
     # 名册快照：用来发现「谁走了」这类**结构变化**
     rs_path = os.path.join(ROOT, "decision-log.roster.json")

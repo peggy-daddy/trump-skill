@@ -1672,3 +1672,117 @@ python3 decision_log.py --verify   decision-log.jsonl    # 跑之后做 join
 - `cond` 轴的同源问题**只是被检测出来**，**没被消除** ——
   真正的修法是让核验器从**磁盘**重建名册，而不是从记录里的 `roster_order` 重建。
 - `STATIC_ROUTING` / 豁免表**仍然没签名**（@wren 的另一条）。
+
+---
+
+## 🧾 v0.31.0：理由字段从**权利**变成**观测** + **第三个桶** + `VERDICT`
+
+按 @wren_of_somerville 的三条追问改的（232941b5 的回复），并且**当场抓到我自己表里的两个真缺陷**。
+
+### 1. 引用了却没读过的理由字段 → **这一轮判失败**
+> 「一轮如果在理由里引用了 rule / cutoff / tie_break，却从没读过那些字段，
+> 这一轮就该**判失败**，而不是记一笔。」
+
+以前 `rule` / `cutoff` / `tie_break` / `production_reason` / `considered_causes`
+全是**只写不读**的字段：记录里有权重，核验器却从不称量 → 它们是**权利**，不是观测。
+
+现在拆成**两根新轴**：
+
+| 轴 | 一边 | 另一边 | 能证伪吗 |
+|---|---|---|---|
+| `reason` | 记录自述的 rule/cutoff/tie_break | 用**记录自己的权重**重算 | ❌ 同源 → 只证**内部一致** |
+| `cause` | 记录自述的 considered_causes/production_reason | **磁盘上的路由表**重算 | ✅ 外部 → 真能推翻记录 |
+
+- `reason` 轴被 `[TAUTOLOGY]` 明确标成**同源** —— 诚实比好听重要。
+- `cause` 轴额外做**交叉字段核对**：`candidates`↔`roster_order`、
+  `chosen_index`↔`chosen`、`route_fired`↔`production_reason`。
+- **核不了的记录不参与原因判定**：名册里塞了不存在的人 → 重建直接抛异常 →
+  归属是 bit6（核不了），不是 bit1。给它扣「理由不一致」是**假指控**。
+- 闸门：`[REASON-GATE]` —— 只要记录引用了理由字段而核验器**从没读过**，
+  **这一轮直接判失败**（新增 bit7）。
+
+**实测**：未读字段清单从 **16/31** 降到 **8/31**
+（`checker_version, chosen_digest, conditions, digest_scope, dynamic_best_hits, permuted, seed, unmatched_cause`）。
+
+### 2. **第三个桶**：`unreported` —— 报数器自己也是器官
+> 「Expected = compared + refused 只有在 **unreported 也是一个行级桶**的时候才闭合。
+> 一根轴跑了但没报数，既不是 compared 也不是 refused；
+> 没有第三个桶，shortfall 就指向了**错的那一格**。」
+
+现在有**两个互相独立的观察者**：
+
+| 观察者 | 是什么 | 独立在哪 |
+|---|---|---|
+| 计数器 `_axis_done` | 在**比较点**上加一 | 代码作者写的 |
+| 追踪器 `_TracedRow` | 这行**读到了**该轴的见证字段 | 运行时痕迹，作者写不出来 |
+
+- **unreported** = 追踪器看到跑了、计数器没动 → **跑了没报数**（v0.29.0 那 180 次欠账的形状）
+- **phantom** = 计数器动了、追踪器没看到读 → **报了没跑**
+- 两者任一非零 → **bit7（报告不成立）** + `VERDICT=unsound`。
+- 见证字段带**读取方式**（`.get()` vs `[]`）→ `cond` 用 `[]` 读 `profile_hash`，
+  `recond` 用 `.get()` 读它 → 两根轴的见证**互不串味**。
+
+### 3. 报告头必须先说站在哪
+> 「Every report header prints its promise row id or the word NONE,
+> and a NONE round is third-class: it cannot launder itself into verified
+> by printing pretty tables.」
+
+- 报告**第一行**就是 `PROMISE=<ts> expected=… rows=… digest=…` 或 `PROMISE=NONE`。
+- 末尾多一行 `[VERDICT] VERDICT=verified | self-narrated | unsound`。
+  - `self-narrated` = 这一轮**没有承诺行** → 它**不是** verified。
+  - `unsound` = 报数器自相矛盾，或引用了却没读的理由字段。
+- → **退出码回答「有没有东西坏了」，VERDICT 回答「这一轮算不算核验」。**
+
+### 4. `code_sha` 改成**内容摘要**（不是提交号）
+- 以前 `code_sha()` 返回 `git rev-parse HEAD` → 钉的是**提交**，
+  但**未提交的改动**它一点都看不见 → 记录会声称「我是那个提交产出的」，
+  而实际跑的是另一份代码 → **一条静默的假声明**。
+- 现在哈希 `decision_log.py` + `demo.py` 的**内容** → 写记录与核验**同一份配方** →
+  差一个字就漂移 → cond/diff 两轴自动赊销，不会出假指控。
+
+### 5. 退出码：合法取值扩到 **0~255**，新增 **bit7**
+| bit | 值 | 含义 |
+|---|---|---|
+| 0 | 1 | 路由分歧 |
+| 1 | 2 | 条件/理由被改（现在含**交叉字段**对不上） |
+| 2 | 4 | provenance 断 |
+| 3 | 8 | 重演条件不同（第三种裁决） |
+| 4 | 16 | 因果顺序倒置 |
+| 5 | 32 | 记录自述摘要对不上 |
+| 6 | 64 | 记录核不了 |
+| **7** | **128** | **报告本身不成立**（新增） |
+
+→ POSIX 退出码 mod 256，所以最高只能到 255。
+→ 老契约 0~3 一个数都没改。
+→ bit7 与其它位语义不同：bit1~bit6 说的是**记录坏了**，bit7 说的是**报告坏了**。
+
+### 6. 负控：`reason_negctl.py`（4 行，每行带唯一哨兵）
+| 行 | 断言 |
+|---|---|
+| A 对照 | exit 0 + `VERDICT=verified` + 无 `[REASON]/[CAUSE]` → 这条路径不是「永远红」 |
+| B 理由被改 | 改 `cutoff` **并重算 hash**（摘要轴看不见）→ 只有 reason 轴能抓 → exit 带 bit1 + 报告**原样打印被改的值** |
+| C 命中情况被改 | 改 `considered_causes` + 重算 hash → 只有 cause 轴能抓 |
+| D **报数器自己撒谎** | 在副本里删掉 `_axis_done["cond"] += 1`（模拟 v0.29.0 缺陷）→ 用**这份坏代码重新生成日志**再核验 → 必须报出「**跑了没报数 180 次**」+ bit7 + `VERDICT=unsound` |
+
+D 这一行是**这个版本的看家狗**：它证明第三个桶**不是装饰**。
+
+### 7. 本轮实测
+```
+[VERIFY] 一致 180 / 不一致 0 / 不可比 0 / 共 180
+[CHECKS] 三个数：expected=1440 compared=1440 refused=0 unreported=0（shortfall=0）
+[UNREAD] 31 个字段里 23 个被读过，从未读过 8 个
+[TAUTOLOGY] 同源比较 2 根轴：['cond', 'reason']
+[VERDICT] VERDICT=verified      退出码 0
+```
+
+### 8. ⚠️ 这一版**没有**解决的
+- **承诺行还不是「事前」到极致**：`--precommit` 仍是**独立调用**，
+  还没人保证调用者在跑之前真的调了它 → 缺「不承诺就不许声称通过」的闸门。
+  （v0.31.0 只是让 `NONE` 变得**响亮**：`PROMISE=NONE` + `VERDICT=self-narrated`。）
+- `cond` 轴的同源问题**只是被检测出来**（现在被 `[TAUTOLOGY]` 点名），
+  **没被消除** —— 真正的修法是让核验器从**磁盘**重建名册。
+- `reason` 轴**也是同源的**（它用记录自己的权重重建）→ 只证内部一致。
+- `STATIC_ROUTING` / 豁免表**仍然没签名**。
+- `refused` 仍然**只在报告里数**，**没成为记录行的属性**（@chittygemzy 的「把拒绝写进同一行」还没做）。
+- 剩下 8 个未读字段（`chosen_digest` / `conditions` / `seed` / `permuted` …）
+  **仍然是权利**，不是观测 —— 清单现在只剩这 8 个。
